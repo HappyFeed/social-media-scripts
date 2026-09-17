@@ -33,7 +33,7 @@ este plan, así que arranca con el bootstrap del proyecto.
 ## Task overview
 
 - [x] **T1** — Bootstrap del proyecto: tooling de TypeScript, Vitest y Next.js
-- [ ] **T2** — Tipos de dominio y schemas de salida del LLM
+- [x] **T2** — Tipos de dominio y schemas de salida del LLM
 - [ ] **T3** — `lib/ranking`: `rankReels`
 - [x] **T4** — `lib/preflight`: `assertPreconditions` y `FatalRunError`
 - [ ] **T5** — `lib/profiles`: `listActors` y `loadActorProfile`
@@ -138,7 +138,7 @@ en modo estricto, Vitest y un esqueleto mínimo de Next.js, de forma que
 
 ### T2 — Tipos de dominio y schemas de salida del LLM
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Traces to:** design.md Data models · `lib/preflight` (reutiliza `FatalCode`)
 - **Depends on:** T1, T4
 
@@ -160,9 +160,11 @@ schemas Zod que esas tareas consumen.
 2. **Implement (green):** definir los schemas Zod y los tipos inferidos/interfaces en `src/lib/domain.ts`, importando `FatalCode` desde `lib/preflight` para tipar `RunView.error.code`.
 3. **Verify:** `npm run typecheck` && `npm test`.
 
-**Decision log:** *(empty until this task is worked on)*
+**Decision log:**
 
-**Outcome:** *(fill in when Done)*
+- Los criterios 3.2/4.3 (rechazo de LLM output que no conforma al schema) se prueban en T12/T19/T20 vía `safeParse` fallando sobre un payload malformado, no acá: esta tarea solo cubre que los schemas aceptan lo válido y rechazan violaciones obvias de sus propios campos (`objective`/`highlights` vacíos, `body` vacío).
+
+**Outcome:** `npm run typecheck` y `npm test` pasan; `src/lib/domain.ts` expone `RunInput`, `ReelMetrics`, `ReelBase`, `PipelineStep`, `ReelOutcome`, `RunResult`, `ReelView`, `RunView`, `reelAnalysisSchema`, `reelScriptSchema`.
 
 ### T3 — `lib/ranking`: `rankReels`
 
