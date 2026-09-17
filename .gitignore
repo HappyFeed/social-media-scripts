@@ -5,6 +5,10 @@ dist/
 coverage/
 *.tsbuildinfo
 
+# Playwright
+test-results/
+playwright-report/
+
 # Python
 __pycache__/
 *.pyc
