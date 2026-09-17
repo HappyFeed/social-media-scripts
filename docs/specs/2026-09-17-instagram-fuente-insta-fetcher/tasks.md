@@ -32,7 +32,7 @@ este plan, así que arranca con el bootstrap del proyecto.
 
 ## Task overview
 
-- [ ] **T1** — Bootstrap del proyecto: tooling de TypeScript, Vitest y Next.js
+- [x] **T1** — Bootstrap del proyecto: tooling de TypeScript, Vitest y Next.js
 - [ ] **T2** — Tipos de dominio y schemas de salida del LLM
 - [ ] **T3** — `lib/ranking`: `rankReels`
 - [ ] **T4** — `lib/preflight`: `assertPreconditions` y `FatalRunError`
@@ -115,7 +115,7 @@ este plan, así que arranca con el bootstrap del proyecto.
 
 ### T1 — Bootstrap del proyecto: tooling de TypeScript, Vitest y Next.js
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Traces to:** design.md Architecture / estructura de directorios (habilita todo lo demás)
 - **Depends on:** none
 
@@ -129,9 +129,12 @@ en modo estricto, Vitest y un esqueleto mínimo de Next.js, de forma que
 2. **Implement (green):** crear `package.json` (scripts `typecheck`, `test`, `test:e2e`), `tsconfig.json` estricto, `vitest.config.ts`, dependencias mínimas (`typescript`, `vitest`, `next`, `react`, `react-dom`, `zod`) y un esqueleto de Next.js (`app/layout.tsx`, `app/page.tsx` placeholder) para que `typecheck` tenga un entrypoint válido. No instalar todavía `@mastra/core`, `insta-fetcher` ni el provider de OpenRouter — se agregan en las tareas que los necesitan (T7, T10–T13), para no sumar dependencias sin uso inmediato.
 3. **Verify:** `npm run typecheck` && `npm test`.
 
-**Decision log:** *(empty until this task is worked on)*
+**Decision log:**
 
-**Outcome:** *(fill in when Done)*
+- El esqueleto de Next.js quedó en `src/app/` (no `app/` en la raíz), siguiendo la convención `src/` que usa el resto del árbol en design.md Architecture (`src/lib`, `src/mastra`, `src/app`).
+- `npm audit` reporta 7 vulnerabilidades (moderate/high) en `vite`/`esbuild`/`postcss`, todas transitivas de `vitest`/`next` y solo relevantes al dev server/build, no a runtime de producción. El fix requiere bumps mayores (`vitest@4`, `next@16`) fuera del alcance de esta tarea; se deja para una tarea de mantenimiento aparte si se decide encarar.
+
+**Outcome:** `npm run typecheck` y `npm test` corren y pasan sobre el esqueleto (`package.json`, `tsconfig.json` estricto, `vitest.config.ts`, `next.config.mjs`, `src/app/layout.tsx`, `src/app/page.tsx`, `src/lib/__smoke__.test.ts`).
 
 ### T2 — Tipos de dominio y schemas de salida del LLM
 
