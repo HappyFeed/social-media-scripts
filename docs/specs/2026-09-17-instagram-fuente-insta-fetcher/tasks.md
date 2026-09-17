@@ -36,7 +36,7 @@ este plan, así que arranca con el bootstrap del proyecto.
 - [x] **T2** — Tipos de dominio y schemas de salida del LLM
 - [x] **T3** — `lib/ranking`: `rankReels`
 - [x] **T4** — `lib/preflight`: `assertPreconditions` y `FatalRunError`
-- [ ] **T5** — `lib/profiles`: `listActors` y `loadActorProfile`
+- [x] **T5** — `lib/profiles`: `listActors` y `loadActorProfile`
 - [ ] **T6** — `lib/prompts`: `buildAnalysisPrompt` y `buildScriptPrompt`
 - [ ] **T7** — `lib/instagram`: `createInstagramClient` (discover/hydrate/download)
 - [ ] **T8** — `lib/instagram`: `SessionExpiredError` y retry con backoff
@@ -212,7 +212,7 @@ con un `FatalRunError` cuyo código identifica cuál precondición falló.
 
 ### T5 — `lib/profiles`: `listActors` y `loadActorProfile`
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Traces to:** 4.5, 5.2 · design.md `lib/profiles`
 - **Depends on:** T4
 
@@ -226,9 +226,12 @@ el run con `FatalRunError('unknown-actor')`.
 2. **Implement (green):** `ActorProfile`, `listActors`, `loadActorProfile`.
 3. **Verify:** `npm run typecheck` && `npm test`.
 
-**Decision log:** *(empty until this task is worked on)*
+**Decision log:**
 
-**Outcome:** *(fill in when Done)*
+- Los fixtures del test usan un directorio temporal real (`fs.mkdtemp` en `os.tmpdir()`, limpiado en `afterEach`) en vez de un directorio fixture checkeado en el repo, para no depender de un `content/actors/` de prueba versionado y evitar que otro test lo pise.
+- `loadActorProfile` distingue el "no existe" de cualquier otro error de filesystem colapsando todo a `unknown-actor` — es la única causa realista de fallo al leer `content/actors/<name>.md` en este flujo.
+
+**Outcome:** `npm run typecheck` y `npm test` pasan; `src/lib/profiles.ts` expone `ActorProfile`, `listActors`, `loadActorProfile`.
 
 ### T6 — `lib/prompts`: `buildAnalysisPrompt` y `buildScriptPrompt`
 
