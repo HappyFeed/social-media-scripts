@@ -37,7 +37,7 @@ este plan, así que arranca con el bootstrap del proyecto.
 - [x] **T3** — `lib/ranking`: `rankReels`
 - [x] **T4** — `lib/preflight`: `assertPreconditions` y `FatalRunError`
 - [x] **T5** — `lib/profiles`: `listActors` y `loadActorProfile`
-- [ ] **T6** — `lib/prompts`: `buildAnalysisPrompt` y `buildScriptPrompt`
+- [x] **T6** — `lib/prompts`: `buildAnalysisPrompt` y `buildScriptPrompt`
 - [ ] **T7** — `lib/instagram`: `createInstagramClient` (discover/hydrate/download)
 - [ ] **T8** — `lib/instagram`: `SessionExpiredError` y retry con backoff
 - [ ] **T9** — `lib/instagram`: límite de concurrencia `hydrateConcurrency`
@@ -235,7 +235,7 @@ el run con `FatalRunError('unknown-actor')`.
 
 ### T6 — `lib/prompts`: `buildAnalysisPrompt` y `buildScriptPrompt`
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Traces to:** 3.1, 4.2, 4.6 · design.md `lib/prompts`
 - **Depends on:** T2, T5
 
@@ -249,9 +249,11 @@ profile verbatim e instruye salida en español.
 2. **Implement (green):** `buildAnalysisPrompt`, `buildScriptPrompt`.
 3. **Verify:** `npm run typecheck` && `npm test`.
 
-**Decision log:** *(empty until this task is worked on)*
+**Decision log:**
 
-**Outcome:** *(fill in when Done)*
+- El test de `buildScriptPrompt` usa un `analysis` en inglés a propósito, para probar que la instrucción de responder en español no depende del idioma del análisis de entrada (4.6) — matchea el criterio literal, no solo el caso feliz en español.
+
+**Outcome:** `npm run typecheck` y `npm test` pasan; `src/lib/prompts.ts` expone `buildAnalysisPrompt`, `buildScriptPrompt`.
 
 ### T7 — `lib/instagram`: `createInstagramClient` (discover/hydrate/download)
 
