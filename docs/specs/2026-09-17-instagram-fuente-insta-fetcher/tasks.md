@@ -35,7 +35,7 @@ este plan, así que arranca con el bootstrap del proyecto.
 - [x] **T1** — Bootstrap del proyecto: tooling de TypeScript, Vitest y Next.js
 - [ ] **T2** — Tipos de dominio y schemas de salida del LLM
 - [ ] **T3** — `lib/ranking`: `rankReels`
-- [ ] **T4** — `lib/preflight`: `assertPreconditions` y `FatalRunError`
+- [x] **T4** — `lib/preflight`: `assertPreconditions` y `FatalRunError`
 - [ ] **T5** — `lib/profiles`: `listActors` y `loadActorProfile`
 - [ ] **T6** — `lib/prompts`: `buildAnalysisPrompt` y `buildScriptPrompt`
 - [ ] **T7** — `lib/instagram`: `createInstagramClient` (discover/hydrate/download)
@@ -185,7 +185,7 @@ schemas Zod que esas tareas consumen.
 
 ### T4 — `lib/preflight`: `assertPreconditions` y `FatalRunError`
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Traces to:** 7.1, 7.2 · design.md `lib/preflight`
 - **Depends on:** T1
 
@@ -199,9 +199,12 @@ con un `FatalRunError` cuyo código identifica cuál precondición falló.
 2. **Implement (green):** `FatalRunError`, `FatalCode`, `BinaryProbe`, `assertPreconditions`.
 3. **Verify:** `npm run typecheck` && `npm test`.
 
-**Decision log:** *(empty until this task is worked on)*
+**Decision log:**
 
-**Outcome:** *(fill in when Done)*
+- `FatalCode` incluye los seis valores del design (`missing-ig-session`, `missing-openrouter-key`, `ffmpeg-unavailable`, `unknown-actor`, `account-not-found`, `ig-session-expired`) aunque `assertPreconditions` solo produce los primeros tres — los otros tres los lanzan T5 y T24, que reusan el mismo tipo.
+- Orden de chequeo: `IG_SESSION_ID` → `OPENROUTER_API_KEY` → probe de `ffmpeg`, short-circuit en el primero que falla (no se prueban los siguientes).
+
+**Outcome:** `npm run typecheck` y `npm test` pasan; `src/lib/preflight.ts` expone `FatalCode`, `FatalRunError`, `BinaryProbe`, `assertPreconditions`.
 
 ### T5 — `lib/profiles`: `listActors` y `loadActorProfile`
 
