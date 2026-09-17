@@ -1,0 +1,77 @@
+# Sistema de creacion de scripts para reels de social media (Instagram)
+
+## Objetivo de negocio
+
+Ayudar a los miembros de Syntex a generar el contenido que se debe grabar para Instagram, Syntex tiene un objetivo de crecmiento en Instagram para agregarle valor a los seguidores y hacerlo de forma consistente.
+
+## Problema actual de negocio
+
+1. Recopilar y analizar los reels, noticias y tendencias del dia es un trabajo muy operativo que consume mucho tiempo
+2. Generar los scripts personalizados por cada persona graba requiere tiempo humano
+
+# Objetivo del sistema
+
+1. Obtener la informacion de unas cuentas base (North Star Accounts)
+2. Analizar esa informacion
+3. Generar los scripts
+
+## Stack
+
+- TypeScript + Node
+- Vitest (tests)
+- NextJS
+- [Mastra.ai](https://mastra.ai/docs): Framework para creacion de workflows y agentes de AI
+
+## Comandos de verificación
+
+```bash
+npm run typecheck   # tsc --noEmit
+npm test             # vitest run
+npm run test:e2e     # playwright test — E2E contra la interfaz servida (real, pega a los feeds configurados)
+```
+
+## Workflow de trabajo
+
+brainstorming → definición → spec (docs/) → ejecución (TDD) → verificación → commit
+
+La etapa de "spec (docs/)" se resuelve con dos skills, en orden:
+
+- **`specify`** — redacta y hace aprobar `requirements.md` y luego
+  `design.md` de `docs/specs/<slug>/`, con un gate de aprobación
+  explícito por documento.
+- **`planning-tasks`** — recién cuando `design.md` está aprobado, arma
+  (o retoma) `tasks.md` del mismo spec y lo itera tarea por tarea,
+  invocando el dynamic workflow `plan-tasks`
+  (`.claude/workflows/plan-tasks.js`), hasta dejarlo 100% iterado. No
+  escribe código de implementación.
+
+Recién con las tres piezas del spec aprobadas (incluyendo la
+aprobación final de `tasks.md`) arranca "ejecución (TDD)".
+
+La etapa de "verificación" se resuelve invocando la skill
+`verify-implementation`: corre un loop e2e autónomo (`plan-test-cases`
+→ `generate-tests` → `healer`, contra la app real vía Playwright MCP)
+que confirma que la feature funciona de verdad en el navegador, no
+solo que sus tests unitarios pasan. Se dispara sola apenas la última
+tarea de un `tasks.md` pasa a `[x]` Done durante la ejecución — no
+hace falta que se la pida explícitamente — y también puede invocarse a
+pedido sobre cualquier spec ya implementado.
+
+## Reglas
+
+- Una skill (fuente de datos) a la vez. No abrir frentes en paralelo —
+  esto aplica en particular a la etapa de ejecución (TDD): un solo
+  agente escribiendo código de una skill a la vez.
+- Excepción controlada, solo dentro del dynamic workflow
+  `plan-tasks`: los subagentes `planner-iterate` pueden evaluar varias
+  tareas de `tasks.md` en paralelo cuando no dependen entre sí, porque
+  corren de solo lectura (no tienen `Edit`/`Write`) y devuelven su
+  propuesta como dato estructurado en vez de tocar el archivo. La
+  escritura real queda serializada en un único `tasks-writer` por
+  lote, nunca dos escribiendo `tasks.md` al mismo tiempo. Fuera de ese
+  mecanismo, seguí sin lanzar dos subagentes `planner` /
+  `planner-iterate` / `tasks-writer` en simultáneo sobre el mismo spec.
+- TDD: test que falla → implementar → test que pasa.
+- No agregar dependencias sin necesidad.
+- No se escribe código de una skill sin su spec en docs/ ya definida,
+  con `tasks.md` iterado y aprobado.
