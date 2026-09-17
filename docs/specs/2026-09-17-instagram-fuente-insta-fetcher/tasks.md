@@ -34,7 +34,7 @@ este plan, así que arranca con el bootstrap del proyecto.
 
 - [x] **T1** — Bootstrap del proyecto: tooling de TypeScript, Vitest y Next.js
 - [x] **T2** — Tipos de dominio y schemas de salida del LLM
-- [ ] **T3** — `lib/ranking`: `rankReels`
+- [x] **T3** — `lib/ranking`: `rankReels`
 - [x] **T4** — `lib/preflight`: `assertPreconditions` y `FatalRunError`
 - [ ] **T5** — `lib/profiles`: `listActors` y `loadActorProfile`
 - [ ] **T6** — `lib/prompts`: `buildAnalysisPrompt` y `buildScriptPrompt`
@@ -168,7 +168,7 @@ schemas Zod que esas tareas consumen.
 
 ### T3 — `lib/ranking`: `rankReels`
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Traces to:** 1.2, 1.3, 1.4, 1.6 · design.md `lib/ranking`
 - **Depends on:** T1
 
@@ -181,9 +181,11 @@ schemas Zod que esas tareas consumen.
 2. **Implement (green):** `rankReels` con sort estable.
 3. **Verify:** `npm run typecheck` && `npm test`.
 
-**Decision log:** *(empty until this task is worked on)*
+**Decision log:**
 
-**Outcome:** *(fill in when Done)*
+- `rankReels` es genérica (`T extends { views: number }`) tal cual el design — no depende de `ReelMetrics`/`ReelBase` de T2, así que no tiene ninguna dependencia real más allá de T1 (el sort estable de JS/`Array.prototype.sort` alcanza, sin librería extra).
+
+**Outcome:** `npm run typecheck` y `npm test` pasan; `src/lib/ranking.ts` expone `rankReels`.
 
 ### T4 — `lib/preflight`: `assertPreconditions` y `FatalRunError`
 
