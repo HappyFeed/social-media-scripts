@@ -49,7 +49,7 @@ este plan, así que arranca con el bootstrap del proyecto.
 - [x] **T15** — `mastra/steps`: `hydrate`
 - [x] **T16** — `mastra/steps`: `downloadVideo`
 - [x] **T17** — `mastra/steps`: `extractAudio`
-- [ ] **T18** — `mastra/steps`: `transcribe`
+- [x] **T18** — `mastra/steps`: `transcribe`
 - [ ] **T19** — `mastra/steps`: `analyze`
 - [ ] **T20** — `mastra/steps`: `generateScript`
 - [ ] **T21** — `mastra/steps`: `cleanup`
@@ -795,7 +795,7 @@ expone `DownloadedReelForAudio`, `extractAudio`.
 
 ### T18 — `mastra/steps`: `transcribe`
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Traces to:** 2.4, 2.6 · design.md Architecture (`transcribe`), Error handling table
 - **Depends on:** T11, T14
 
@@ -811,9 +811,32 @@ handling del design), y cualquier otra falla de transcripción se mapea a
 2. **Implement (green):** `src/mastra/steps/transcribe.ts`.
 3. **Verify:** `npm run typecheck` && `npm test`.
 
-**Decision log:** *(empty until this task is worked on)*
+**Decision log:**
 
-**Outcome:** *(fill in when Done)*
+- Este es el único step (junto con `cleanup`, T21) cuyo uso de
+  `runPipelineStep` (T14) no es directo: `runPipelineStep` siempre marca
+  un fallo con el `stepName` que se le pasó, pero acá un
+  `AudioTooLargeError` tiene que aterrizar como `failed('extract-audio',
+  'audio too large')`, no como `failed('transcribe', ...)` — un
+  `failedStep` distinto del nombre del step que lo detecta. Se resolvió
+  sin bypassear `runPipelineStep` (a diferencia de `cleanup`, que sí lo
+  hace): dentro de la función que le pasamos, un `AudioTooLargeError` se
+  atrapa y se devuelve como resultado "exitoso" con un marcador interno
+  (`{...reel, audioTooLarge: true}`) en vez de volver a lanzar; después
+  de que `runPipelineStep` resuelve, `transcribe()` detecta ese marcador
+  y recién ahí arma el `FailedReel` con el `failedStep`/`reason`
+  correctos. Cualquier otro error sigue lanzándose tal cual, así que
+  `runPipelineStep` lo captura con su comportamiento genérico
+  (`failed('transcribe', error.message)`) sin código extra. Esto preserva
+  el passthrough de un input ya `failed` (T14) sin duplicar esa lógica.
+- El marcador (`audioTooLarge: true`) es un campo plano, no un `Symbol`
+  ni un valor lanzado — se probó primero con un `Symbol` como key
+  computada y quedó más difícil de leer que simplemente chequear `'
+  audioTooLarge' in result`, dado que ninguna otra parte del código usa
+  `Symbol` para esto.
+
+**Outcome:** `npm run typecheck` y `npm test` pasan; `src/mastra/steps/transcribe.ts`
+expone `ReelForTranscription`, `transcribe`.
 
 ### T19 — `mastra/steps`: `analyze`
 
