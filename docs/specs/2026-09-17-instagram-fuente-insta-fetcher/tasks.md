@@ -46,7 +46,7 @@ este plan, así que arranca con el bootstrap del proyecto.
 - [x] **T12** — `lib/openrouter`: `CompletionClient` con schema y retry
 - [x] **T13** — `mastra/index`: instancia de Mastra con storage
 - [x] **T14** — `mastra/steps`: helper de fallo-como-valor por step
-- [ ] **T15** — `mastra/steps`: `hydrate`
+- [x] **T15** — `mastra/steps`: `hydrate`
 - [ ] **T16** — `mastra/steps`: `downloadVideo`
 - [ ] **T17** — `mastra/steps`: `extractAudio`
 - [ ] **T18** — `mastra/steps`: `transcribe`
@@ -690,7 +690,7 @@ expone `runPipelineStep`, `FailedReel`.
 
 ### T15 — `mastra/steps`: `hydrate`
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Traces to:** 2.1 · design.md Architecture (`hydrate`)
 - **Depends on:** T7, T14
 
@@ -704,9 +704,26 @@ en el step `hydrate`.
 2. **Implement (green):** `src/mastra/steps/hydrate.ts` usando `runPipelineStep` (T14) + `instagram.hydrateReel` (T7).
 3. **Verify:** `npm run typecheck` && `npm test`.
 
-**Decision log:** *(empty until this task is worked on)*
+**Decision log:**
 
-**Outcome:** *(fill in when Done)*
+- `ReelBase` (T2) no incluye `mediaId` — es un identificador interno de
+  Instagram que no forma parte de lo que la UI necesita ver (`ReelView`/
+  `ReelOutcome` tampoco lo exponen). El input sano de este step se tipó
+  como `ReelToHydrate extends ReelBase { mediaId: string }`, un tipo
+  nuevo y local a `hydrate.ts`: el reel trae `mediaId` mientras viaja
+  internamente por el pipeline (viene de `discover+rank`, T24) pero se
+  descarta en el `assemble` final, igual que otros campos internos que
+  no llegan a `ReelBase`.
+- El segundo parámetro del step es `Pick<InstagramClient,
+  'hydrateReel'>`, no `InstagramClient` completo — el step solo necesita
+  esa capacidad, y acotar el tipo evita que el fake de test tenga que
+  implementar `discoverReels`/`downloadVideo` sin usarlos.
+- Sin sorpresas de implementación: es una aplicación directa de
+  `runPipelineStep` (T14) sobre `instagram.hydrateReel` (T7), tal cual
+  preveía el design.
+
+**Outcome:** `npm run typecheck` y `npm test` pasan; `src/mastra/steps/hydrate.ts`
+expone `ReelToHydrate`, `hydrate`.
 
 ### T16 — `mastra/steps`: `downloadVideo`
 
