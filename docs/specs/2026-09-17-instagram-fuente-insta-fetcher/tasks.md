@@ -41,7 +41,7 @@ este plan, así que arranca con el bootstrap del proyecto.
 - [x] **T7** — `lib/instagram`: `createInstagramClient` (discover/hydrate/download)
 - [x] **T8** — `lib/instagram`: `SessionExpiredError` y retry con backoff
 - [x] **T9** — `lib/instagram`: límite de concurrencia `hydrateConcurrency`
-- [ ] **T10** — `lib/media`: `createFfmpegExtractor`
+- [x] **T10** — `lib/media`: `createFfmpegExtractor`
 - [ ] **T11** — `lib/openrouter`: `TranscriptionClient`
 - [ ] **T12** — `lib/openrouter`: `CompletionClient` con schema y retry
 - [ ] **T13** — `mastra/index`: instancia de Mastra con storage
@@ -417,7 +417,7 @@ REEL_FETCH_CONCURRENCY` llamadas en simultáneo.
 
 ### T10 — `lib/media`: `createFfmpegExtractor`
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Traces to:** 2.3 · design.md `lib/media`
 - **Depends on:** T1
 
@@ -431,9 +431,36 @@ del archivo resultante.
 2. **Implement (green):** `createFfmpegExtractor`.
 3. **Verify:** `npm run typecheck` && `npm test`.
 
-**Decision log:** *(empty until this task is worked on)*
+**Decision log:**
 
-**Outcome:** *(fill in when Done)*
+- El test mockea `node:child_process` (`spawn`) y `node:fs/promises`
+  (`stat`) completos vía `vi.mock`, en vez de inyectar esas dependencias
+  por parámetro — el Interface de design.md solo expone
+  `createFfmpegExtractor(ffmpegBin?: string)`, sin punto de inyección
+  para el transporte, así que se testea al mismo nivel que T7/T8/T9
+  mockearon `insta-fetcher`/`axios`: el módulo de Node, no un adapter
+  propio.
+- El proceso fake del spawn es un `EventEmitter` real de Node
+  (`node:events`) en vez de un objeto a mano con `.on`/`.emit`
+  reimplementados — cubre la forma real de `ChildProcess` (que también
+  es un `EventEmitter`) sin duplicar esa lógica en el test.
+- Argumentos de ffmpeg fijados exactamente:
+  `-y -i <videoPath> -vn -ac 1 -ar 16000 -acodec libmp3lame <destPath>`
+  — `-vn` descarta el video, `-ac 1`/`-ar 16000` fuerzan mono a 16 kHz
+  (2.3), `-acodec libmp3lame` fija el encoder de mp3 en vez de confiar
+  en que ffmpeg lo infiera de la extensión de `destPath`, y `-y`
+  sobreescribe sin preguntar si `destPath` ya existiera de un intento
+  previo.
+- Un `exit code` distinto de 0 rechaza con un `Error` genérico (mensaje
+  incluye "ffmpeg" y el código) sin necesidad de un tipo de error
+  dedicado — a diferencia de `SessionExpiredError`/`FatalRunError`, nada
+  en requirements.md distingue este fallo por código, así que no hay
+  necesidad de una clase de error específica: el step `extractAudio`
+  (T17) solo necesita que la promesa rechace para marcar el reel
+  `failed`.
+
+**Outcome:** `npm run typecheck` y `npm test` pasan; `src/lib/media.ts` expone
+`AudioExtractor`, `createFfmpegExtractor`.
 
 ### T11 — `lib/openrouter`: `TranscriptionClient`
 
