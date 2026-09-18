@@ -40,7 +40,7 @@ este plan, así que arranca con el bootstrap del proyecto.
 - [x] **T6** — `lib/prompts`: `buildAnalysisPrompt` y `buildScriptPrompt`
 - [x] **T7** — `lib/instagram`: `createInstagramClient` (discover/hydrate/download)
 - [x] **T8** — `lib/instagram`: `SessionExpiredError` y retry con backoff
-- [ ] **T9** — `lib/instagram`: límite de concurrencia `hydrateConcurrency`
+- [x] **T9** — `lib/instagram`: límite de concurrencia `hydrateConcurrency`
 - [ ] **T10** — `lib/media`: `createFfmpegExtractor`
 - [ ] **T11** — `lib/openrouter`: `TranscriptionClient`
 - [ ] **T12** — `lib/openrouter`: `CompletionClient` con schema y retry
@@ -365,7 +365,7 @@ wrapper y re-exporta `SessionExpiredError`.
 
 ### T9 — `lib/instagram`: límite de concurrencia `hydrateConcurrency`
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Traces to:** 6.5 · design.md `lib/instagram` Notas
 - **Depends on:** T7
 
@@ -379,9 +379,41 @@ límite de concurrencia de 3 reels del workflow.
 2. **Implement (green):** limitador de concurrencia (semáforo simple) aplicado a `hydrateReel` en `createInstagramClient`, con default 5 vía `REEL_FETCH_CONCURRENCY`.
 3. **Verify:** `npm run typecheck` && `npm test`.
 
-**Decision log:** *(empty until this task is worked on)*
+**Decision log:**
 
-**Outcome:** *(fill in when Done)*
+- El semáforo vive en `src/lib/instagram/concurrency.ts`
+  (`createSemaphore(limit)` con un único método `run(fn)`), separado de
+  `client.ts`, siguiendo el mismo criterio que T8: es una pieza genérica
+  y testeable de forma aislada de `insta-fetcher`/Axios, aunque acá el
+  test la ejercita a través de `createInstagramClient` en vez de en
+  aislamiento — con un semáforo genérico alcanza con probar que
+  `hydrateReel` respeta el límite, no hace falta un test unitario
+  aparte del semáforo mismo.
+- El límite solo envuelve `hydrateReel`, no `discoverReels` ni
+  `downloadVideo`: el Objective y el design.md de esta tarea son
+  explícitos en que `hydrateConcurrency` es una red de seguridad
+  específica de las llamadas a `hydrateReel` (6.5), independiente del
+  límite de 3 reels en simultáneo que impone el workflow (6.3) sobre el
+  pipeline completo por reel — no un límite global del cliente.
+- `REEL_FETCH_CONCURRENCY` se implementó como una constante exportada
+  (`export const REEL_FETCH_CONCURRENCY = 5`) en `client.ts`, no como una
+  variable de entorno: el nombre aparece así en el comentario del
+  Interface de design.md, pero a diferencia de `IG_SESSION_ID`/
+  `OPENROUTER_API_KEY` (que sí son env vars reales, consumidas por
+  `lib/preflight`), acá nombra el default del parámetro
+  `hydrateConcurrency`, no una fuente de configuración por entorno.
+- El test de "cuenta en vuelo" usa un mock de `fetchPostByMediaId` que
+  incrementa/decrementa un contador alrededor de un `setTimeout` real de
+  10 ms (sin fake timers) y dispara 10 llamadas en simultáneo vía
+  `Promise.all`; se resetea el mock en `beforeEach` porque ambos tests
+  del archivo comparten el mismo mock a nivel de módulo (`vi.mock`
+  arriba del `describe`), y sin el reset los conteos de llamadas del
+  primer test se arrastraban al segundo.
+
+**Outcome:** `npm run typecheck` y `npm test` pasan; `src/lib/instagram/concurrency.ts`
+expone `createSemaphore`; `client.ts` exporta `REEL_FETCH_CONCURRENCY` y
+usa un semáforo para limitar `hydrateReel` a `opts.hydrateConcurrency ??
+REEL_FETCH_CONCURRENCY` llamadas en simultáneo.
 
 ### T10 — `lib/media`: `createFfmpegExtractor`
 

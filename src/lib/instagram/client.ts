@@ -2,8 +2,11 @@ import { writeFile } from 'node:fs/promises'
 import axios from 'axios'
 import { igApi } from 'insta-fetcher'
 import { withInstagramRetry } from './resilience'
+import { createSemaphore } from './concurrency'
 
 export { SessionExpiredError } from './resilience'
+
+export const REEL_FETCH_CONCURRENCY = 5
 
 export interface DiscoveredReel {
   shortcode: string
@@ -59,6 +62,7 @@ export function createInstagramClient(opts: {
   retry?: { attempts: number; baseDelayMs: number }
 }): InstagramClient {
   const ig = new igApi(opts.sessionId)
+  const hydrateSemaphore = createSemaphore(opts.hydrateConcurrency ?? REEL_FETCH_CONCURRENCY)
 
   return {
     async discoverReels(account, scan) {
@@ -81,19 +85,21 @@ export function createInstagramClient(opts: {
     },
 
     async hydrateReel(mediaId) {
-      const raw = (await withInstagramRetry(
-        () => ig.fetchPostByMediaId(mediaId),
-        opts.retry,
-      )) as unknown as RawPostByMediaIdResponse
-      const item = raw.items[0]
-      if (!item) {
-        throw new Error(`No se encontró el post con mediaId ${mediaId}`)
-      }
-      return {
-        caption: item.caption?.text ?? '',
-        videoUrl: item.video_versions[0]?.url ?? '',
-        durationSeconds: item.video_duration,
-      }
+      return hydrateSemaphore.run(async () => {
+        const raw = (await withInstagramRetry(
+          () => ig.fetchPostByMediaId(mediaId),
+          opts.retry,
+        )) as unknown as RawPostByMediaIdResponse
+        const item = raw.items[0]
+        if (!item) {
+          throw new Error(`No se encontró el post con mediaId ${mediaId}`)
+        }
+        return {
+          caption: item.caption?.text ?? '',
+          videoUrl: item.video_versions[0]?.url ?? '',
+          durationSeconds: item.video_duration,
+        }
+      })
     },
 
     async downloadVideo(videoUrl, destPath) {
