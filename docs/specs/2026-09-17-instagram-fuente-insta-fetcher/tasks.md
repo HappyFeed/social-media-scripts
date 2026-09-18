@@ -45,7 +45,7 @@ este plan, así que arranca con el bootstrap del proyecto.
 - [x] **T11** — `lib/openrouter`: `TranscriptionClient`
 - [x] **T12** — `lib/openrouter`: `CompletionClient` con schema y retry
 - [x] **T13** — `mastra/index`: instancia de Mastra con storage
-- [ ] **T14** — `mastra/steps`: helper de fallo-como-valor por step
+- [x] **T14** — `mastra/steps`: helper de fallo-como-valor por step
 - [ ] **T15** — `mastra/steps`: `hydrate`
 - [ ] **T16** — `mastra/steps`: `downloadVideo`
 - [ ] **T17** — `mastra/steps`: `extractAudio`
@@ -645,7 +645,7 @@ exacto) con `InMemoryStore` como storage.
 
 ### T14 — `mastra/steps`: helper de fallo-como-valor por step
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Traces to:** 6.1 · design.md "Dos clases de error, una regla"
 - **Depends on:** T2
 
@@ -660,9 +660,33 @@ step lo pasa sin tocarlo ni ejecutar la función.
 2. **Implement (green):** `runPipelineStep(stepName, input, fn)` en `src/mastra/steps/pipeline-step.ts`.
 3. **Verify:** `npm run typecheck` && `npm test`.
 
-**Decision log:** *(empty until this task is worked on)*
+**Decision log:**
 
-**Outcome:** *(fill in when Done)*
+- `runPipelineStep<TIn extends ReelBase, TOut>(stepName, input: TIn |
+  FailedReel, fn: (input: TIn) => Promise<TOut>): Promise<TOut |
+  FailedReel>` reutiliza `ReelBase`/`PipelineStep` de `lib/domain` (T2)
+  en vez de definir tipos nuevos — `FailedReel` es exactamente la rama
+  `failed` de `ReelOutcome` (`ReelBase & {status:'failed', failedStep,
+  reason}`), así que el helper encaja directo con el tipo que ya existe
+  para el resultado final de un reel, sin duplicar esa forma.
+- Detección de "input ya failed" vía un type guard
+  (`isFailedReel(input): input is FailedReel`) que chequea
+  `'status' in input && input.status === 'failed'` — los reels sanos que
+  circulan entre steps (T15-T20) nunca tienen campo `status` hasta que
+  fallan, así que esta detección no da falsos positivos con inputs
+  intermedios (p.ej. un reel ya hidratado antes de pasar por
+  `downloadVideo`).
+- El `reason` de un fallo usa `error.message` cuando el valor lanzado es
+  un `Error`, y `String(error)` en cualquier otro caso — cubre el caso
+  (poco común pero posible en JS) de que un step lance un valor no-Error.
+- Se agregó una tercera prueba (además de las dos del TDD plan) para el
+  caso feliz explícito: `fn` que resuelve, dado un input sano, devuelve
+  el resultado de `fn` tal cual — cierra el contrato completo del helper
+  (failed-pasa-derecho / throw-se-convierte-en-failed / éxito-pasa-el-
+  resultado) del que T15-T20 van a depender.
+
+**Outcome:** `npm run typecheck` y `npm test` pasan; `src/mastra/steps/pipeline-step.ts`
+expone `runPipelineStep`, `FailedReel`.
 
 ### T15 — `mastra/steps`: `hydrate`
 
