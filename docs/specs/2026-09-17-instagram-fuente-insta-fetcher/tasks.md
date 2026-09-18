@@ -42,7 +42,7 @@ este plan, así que arranca con el bootstrap del proyecto.
 - [x] **T8** — `lib/instagram`: `SessionExpiredError` y retry con backoff
 - [x] **T9** — `lib/instagram`: límite de concurrencia `hydrateConcurrency`
 - [x] **T10** — `lib/media`: `createFfmpegExtractor`
-- [ ] **T11** — `lib/openrouter`: `TranscriptionClient`
+- [x] **T11** — `lib/openrouter`: `TranscriptionClient`
 - [ ] **T12** — `lib/openrouter`: `CompletionClient` con schema y retry
 - [ ] **T13** — `mastra/index`: instancia de Mastra con storage
 - [ ] **T14** — `mastra/steps`: helper de fallo-como-valor por step
@@ -464,7 +464,7 @@ del archivo resultante.
 
 ### T11 — `lib/openrouter`: `TranscriptionClient`
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Traces to:** 2.4, 2.6 · design.md `lib/openrouter`
 - **Depends on:** T1
 
@@ -479,9 +479,42 @@ transcripción y devuelve el texto.
 2. **Implement (green):** `TranscriptionClient`, `AudioTooLargeError`, entrada del modelo de transcripción en `src/lib/models.ts`.
 3. **Verify:** `npm run typecheck` && `npm test`.
 
-**Decision log:** *(empty until this task is worked on)*
+**Decision log:**
 
-**Outcome:** *(fill in when Done)*
+- design.md agrupa `TranscriptionClient` y `CompletionClient` bajo una
+  única factory pública, `createOpenRouterClients(opts): {transcription,
+  completion}`. Ni el TDD plan de esta tarea ni el de T12 piden esa
+  factory combinada — ambos apuntan a archivos separados
+  (`transcription.ts`/`completion.ts`) y a construir cada cliente por su
+  cuenta (`TranscriptionClient`, `AudioTooLargeError` acá;
+  `CompletionClient` en T12) — y ningún step downstream (T18-T20) la
+  invoca: reciben `TranscriptionClient`/`CompletionClient` inyectados
+  directo como fakes en sus tests. Se decidió entonces exportar
+  `createTranscriptionClient(opts)` en vez de construir de una la factory
+  combinada del design; queda como open item (ver Open items) armar
+  `createOpenRouterClients` como wrapper delgado sobre
+  `createTranscriptionClient` + `createCompletionClient` si en algún
+  punto hace falta un único punto de wiring para el contenedor de DI real
+  de Mastra — no bloquea nada de lo que sí cubre este `tasks.md`.
+- `createTranscriptionClient(opts, httpClient?)` toma un segundo
+  parámetro opcional para el cliente HTTP (con default `axios`), a
+  diferencia de T7-T10 que mockearon el módulo completo (`insta-fetcher`/
+  `axios`/`node:child_process` vía `vi.mock`). El propio TDD plan de esta
+  tarea habla de "el cliente HTTP inyectado", así que acá sí se optó por
+  inyección explícita por parámetro en vez de mockear el módulo — más
+  simple de testear sin `vi.mock`, y no rompe el Interface público de
+  design.md porque el parámetro es opcional con un default funcional.
+- `TRANSCRIPTION_MODEL` en `src/lib/models.ts` se fijó en
+  `'openai/whisper-1'` como identificador de modelo plausible para el
+  endpoint de OpenRouter — el valor exacto no afecta ningún test (la
+  petición HTTP está mockeada) y queda centralizado en un solo archivo
+  para poder ajustarlo sin tocar `transcription.ts` si el nombre real del
+  modelo en OpenRouter difiere.
+
+**Outcome:** `npm run typecheck` y `npm test` pasan; `src/lib/openrouter/transcription.ts`
+expone `TranscriptionClient`, `AudioTooLargeError`,
+`createTranscriptionClient`; `src/lib/models.ts` expone
+`TRANSCRIPTION_MODEL`.
 
 ### T12 — `lib/openrouter`: `CompletionClient` con schema y retry
 
@@ -996,3 +1029,10 @@ cuenta de Instagram quemable dedicada, nunca de la cuenta real de Syntex.
 - `design.md` no fija el paquete exacto del provider de OpenRouter para el
   AI SDK (solo dice "el proveedor OpenRouter del AI SDK"); queda para
   resolverse durante T11/T12, agregando la dependencia elegida recién ahí.
+- `design.md` describe una única factory pública `createOpenRouterClients`
+  que devuelve `{transcription, completion}`; T11 y T12 la resolvieron
+  como dos factories independientes (`createTranscriptionClient`,
+  `createCompletionClient`) porque ningún task del plan invoca la
+  combinada. Si más adelante hace falta un único punto de wiring (p.ej.
+  para el contenedor de DI de Mastra en T13/T25), agregar un
+  `createOpenRouterClients` delgado que las componga.
