@@ -1,6 +1,9 @@
 import { writeFile } from 'node:fs/promises'
 import axios from 'axios'
 import { igApi } from 'insta-fetcher'
+import { withInstagramRetry } from './resilience'
+
+export { SessionExpiredError } from './resilience'
 
 export interface DiscoveredReel {
   shortcode: string
@@ -59,7 +62,10 @@ export function createInstagramClient(opts: {
 
   return {
     async discoverReels(account, scan) {
-      const raw = (await ig.fetchUserReel(account, undefined, scan)) as unknown as RawUserReelResponse
+      const raw = (await withInstagramRetry(
+        () => ig.fetchUserReel(account, undefined, scan),
+        opts.retry,
+      )) as unknown as RawUserReelResponse
       return raw.xdt_api__v1__clips__user__connection_v2.edges.map((edge) => {
         const media = edge.node.media
         return {
@@ -75,7 +81,10 @@ export function createInstagramClient(opts: {
     },
 
     async hydrateReel(mediaId) {
-      const raw = (await ig.fetchPostByMediaId(mediaId)) as unknown as RawPostByMediaIdResponse
+      const raw = (await withInstagramRetry(
+        () => ig.fetchPostByMediaId(mediaId),
+        opts.retry,
+      )) as unknown as RawPostByMediaIdResponse
       const item = raw.items[0]
       if (!item) {
         throw new Error(`No se encontró el post con mediaId ${mediaId}`)
@@ -88,7 +97,10 @@ export function createInstagramClient(opts: {
     },
 
     async downloadVideo(videoUrl, destPath) {
-      const response = await axios.get(videoUrl, { responseType: 'arraybuffer' })
+      const response = await withInstagramRetry(
+        () => axios.get(videoUrl, { responseType: 'arraybuffer' }),
+        opts.retry,
+      )
       await writeFile(destPath, response.data)
     },
   }

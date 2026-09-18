@@ -39,7 +39,7 @@ este plan, así que arranca con el bootstrap del proyecto.
 - [x] **T5** — `lib/profiles`: `listActors` y `loadActorProfile`
 - [x] **T6** — `lib/prompts`: `buildAnalysisPrompt` y `buildScriptPrompt`
 - [x] **T7** — `lib/instagram`: `createInstagramClient` (discover/hydrate/download)
-- [ ] **T8** — `lib/instagram`: `SessionExpiredError` y retry con backoff
+- [x] **T8** — `lib/instagram`: `SessionExpiredError` y retry con backoff
 - [ ] **T9** — `lib/instagram`: límite de concurrencia `hydrateConcurrency`
 - [ ] **T10** — `lib/media`: `createFfmpegExtractor`
 - [ ] **T11** — `lib/openrouter`: `TranscriptionClient`
@@ -308,7 +308,7 @@ expone `createInstagramClient`, `InstagramClient`, `DiscoveredReel`,
 
 ### T8 — `lib/instagram`: `SessionExpiredError` y retry con backoff
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Traces to:** 6.4, 7.3 (nivel de módulo) · design.md `lib/instagram` Notas
 - **Depends on:** T7
 
@@ -322,9 +322,46 @@ transitoria se reintenta con backoff exponencial antes de propagarse.
 2. **Implement (green):** wrapper de retry/backoff + `SessionExpiredError`, aplicado dentro de `createInstagramClient` (T7).
 3. **Verify:** `npm run typecheck` && `npm test`.
 
-**Decision log:** *(empty until this task is worked on)*
+**Decision log:**
 
-**Outcome:** *(fill in when Done)*
+- `withInstagramRetry(fn, retry, sleep)` vive en un archivo nuevo,
+  `src/lib/instagram/resilience.ts`, en vez de agregarse dentro de
+  `client.ts` — es una pieza independiente y genéricamente testeable
+  (no depende de `insta-fetcher` ni de Axios), y `client.ts` la importa y
+  re-exporta `SessionExpiredError` para que el resto del código siga
+  pudiendo hacer `import { SessionExpiredError } from
+  'lib/instagram/client'` como un único punto de entrada del módulo, tal
+  cual lo agrupa design.md.
+- El wrapper acepta un tercer parámetro opcional `sleep` (default
+  `setTimeout` real) para poder testear los delays crecientes sin
+  esperarlos de verdad ni depender de fake timers de vitest — los tests
+  inyectan un `sleep` espía y verifican los milisegundos exactos con los
+  que se lo llamó.
+- Detección de sesión expirada: se decidió duck-typear
+  `error.response.status === 403` (la forma de un `AxiosError`) en vez de
+  importar el tipo de error de Axios, porque tanto `insta-fetcher` (que
+  usa Axios internamente) como el `axios.get` directo de `downloadVideo`
+  producen errores con esa forma, y así el wrapper no acopla su firma a
+  un tipo de librería externa.
+- Backoff: `baseDelayMs * 2 ** intentoIndex` (intentoIndex arrancando en
+  0 para el primer reintento), sin jitter — design.md solo pide "backoff
+  exponencial" sin fijar la fórmula exacta, y esto alcanza para que el
+  test de "delays crecientes" sea determinístico.
+- Default de `retry` cuando `createInstagramClient` no lo recibe:
+  `{ attempts: 3, baseDelayMs: 500 }` (`DEFAULT_RETRY`) — design.md no fija
+  un default explícito para este campo (a diferencia de
+  `hydrateConcurrency`, que sí trae 5 documentado), así que se eligió un
+  valor conservador consistente con el resto del sistema.
+- Los tres métodos de `createInstagramClient` (`discoverReels`,
+  `hydrateReel`, `downloadVideo`) quedan envueltos en
+  `withInstagramRetry`, tal cual pide design.md ("un HTTP 403 en
+  cualquier llamada del cliente"), no solo los dos que después consumen
+  los steps `discover`/`hydrate` de T24.
+
+**Outcome:** `npm run typecheck` y `npm test` pasan; `src/lib/instagram/resilience.ts`
+expone `SessionExpiredError`, `RetryOptions`, `DEFAULT_RETRY`,
+`withInstagramRetry`; `client.ts` envuelve sus tres llamadas HTTP con el
+wrapper y re-exporta `SessionExpiredError`.
 
 ### T9 — `lib/instagram`: límite de concurrencia `hydrateConcurrency`
 
