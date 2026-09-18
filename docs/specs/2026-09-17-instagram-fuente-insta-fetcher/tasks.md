@@ -51,7 +51,7 @@ este plan, así que arranca con el bootstrap del proyecto.
 - [x] **T17** — `mastra/steps`: `extractAudio`
 - [x] **T18** — `mastra/steps`: `transcribe`
 - [x] **T19** — `mastra/steps`: `analyze`
-- [ ] **T20** — `mastra/steps`: `generateScript`
+- [x] **T20** — `mastra/steps`: `generateScript`
 - [ ] **T21** — `mastra/steps`: `cleanup`
 - [ ] **T22** — `mastra/workflows`: `processReelWorkflow`
 - [ ] **T23** — `mastra/steps`: `preflight`
@@ -875,7 +875,7 @@ expone `ReelForAnalysis`, `analyze`.
 
 ### T20 — `mastra/steps`: `generateScript`
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Traces to:** 4.1, 4.2, 4.3, 4.4, 4.6 · design.md Architecture (`generateScript`)
 - **Depends on:** T6, T12, T14
 
@@ -891,9 +891,20 @@ script response".
 2. **Implement (green):** `src/mastra/steps/generate-script.ts`.
 3. **Verify:** `npm run typecheck` && `npm test`.
 
-**Decision log:** *(empty until this task is worked on)*
+**Decision log:**
 
-**Outcome:** *(fill in when Done)*
+- `generateScript(input, openrouter, profile)` recibe el `ActorProfile`
+  como tercer parámetro en vez de como campo del reel: el profile es el
+  mismo para los N reels de un run (lo carga `preflight`, T23, una sola
+  vez), no algo que viaje reel por reel como `mediaId`/`caption`/etc., así
+  que no tiene sentido acumularlo en el tipo `ReelForScript`.
+- Mismo patrón que T19 para el mapeo de error: `try/catch` local dentro
+  de la función de `runPipelineStep` que relanza `Error('invalid script
+  response')`, porque acá tampoco cambia el `failedStep` (sigue siendo
+  `'generate-script'`, el mismo `stepName`).
+
+**Outcome:** `npm run typecheck` y `npm test` pasan; `src/mastra/steps/generate-script.ts`
+expone `ReelForScript`, `generateScript`.
 
 ### T21 — `mastra/steps`: `cleanup`
 
