@@ -50,7 +50,7 @@ este plan, así que arranca con el bootstrap del proyecto.
 - [x] **T16** — `mastra/steps`: `downloadVideo`
 - [x] **T17** — `mastra/steps`: `extractAudio`
 - [x] **T18** — `mastra/steps`: `transcribe`
-- [ ] **T19** — `mastra/steps`: `analyze`
+- [x] **T19** — `mastra/steps`: `analyze`
 - [ ] **T20** — `mastra/steps`: `generateScript`
 - [ ] **T21** — `mastra/steps`: `cleanup`
 - [ ] **T22** — `mastra/workflows`: `processReelWorkflow`
@@ -840,7 +840,7 @@ expone `ReelForTranscription`, `transcribe`.
 
 ### T19 — `mastra/steps`: `analyze`
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Traces to:** 3.1, 3.2, 3.3, 3.4 · design.md Architecture (`analyze`)
 - **Depends on:** T6, T12, T14
 
@@ -855,9 +855,23 @@ reel queda `failed` en `analyze` con motivo "invalid analysis response".
 2. **Implement (green):** `src/mastra/steps/analyze.ts`.
 3. **Verify:** `npm run typecheck` && `npm test`.
 
-**Decision log:** *(empty until this task is worked on)*
+**Decision log:**
 
-**Outcome:** *(fill in when Done)*
+- A diferencia de T18, acá el `failedStep` no cambia (siempre `'analyze'`),
+  solo el `reason` necesita ser el string fijo `'invalid analysis
+  response'` en vez de propagar el mensaje real del error que lanzó
+  `CompletionClient.complete` (que ya hizo su propio retry-once
+  internamente, T12). Alcanza con un `try/catch` local dentro de la
+  función que le pasamos a `runPipelineStep` que relanza un `Error` con
+  ese mensaje fijo — no hace falta el mecanismo de marcador de T18,
+  porque acá el `failedStep` de destino coincide con el `stepName` que ya
+  se le pasa a `runPipelineStep`.
+- `ReelForAnalysis extends ReelForTranscription { transcript: string }`
+  sigue la misma cadena de tipos que los steps anteriores (T15-T18):
+  cada uno extiende la salida `ok` del anterior.
+
+**Outcome:** `npm run typecheck` y `npm test` pasan; `src/mastra/steps/analyze.ts`
+expone `ReelForAnalysis`, `analyze`.
 
 ### T20 — `mastra/steps`: `generateScript`
 
