@@ -38,7 +38,7 @@ este plan, así que arranca con el bootstrap del proyecto.
 - [x] **T4** — `lib/preflight`: `assertPreconditions` y `FatalRunError`
 - [x] **T5** — `lib/profiles`: `listActors` y `loadActorProfile`
 - [x] **T6** — `lib/prompts`: `buildAnalysisPrompt` y `buildScriptPrompt`
-- [ ] **T7** — `lib/instagram`: `createInstagramClient` (discover/hydrate/download)
+- [x] **T7** — `lib/instagram`: `createInstagramClient` (discover/hydrate/download)
 - [ ] **T8** — `lib/instagram`: `SessionExpiredError` y retry con backoff
 - [ ] **T9** — `lib/instagram`: límite de concurrencia `hydrateConcurrency`
 - [ ] **T10** — `lib/media`: `createFfmpegExtractor`
@@ -257,7 +257,7 @@ profile verbatim e instruye salida en español.
 
 ### T7 — `lib/instagram`: `createInstagramClient` (discover/hydrate/download)
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Traces to:** 1.1, 2.1, 2.2 · design.md `lib/instagram`
 - **Depends on:** T1
 
@@ -273,9 +273,38 @@ un video a un path local.
 2. **Implement (green):** `createInstagramClient` con los tres métodos, agregando `insta-fetcher` (`1.4.0` exacto) a `package.json`.
 3. **Verify:** `npm run typecheck` && `npm test`.
 
-**Decision log:** *(empty until this task is worked on)*
+**Decision log:**
 
-**Outcome:** *(fill in when Done)*
+- El paquete `insta-fetcher@1.4.0` no trae tipos completos del payload
+  crudo de `api/v1` (p.ej. `ReelMedia` no declara `taken_at`, y `IRawBody`
+  tipa un `Item` gigante con decenas de campos irrelevantes). En vez de
+  castear a `any` o depender de esos tipos incompletos/ruidosos, el
+  adapter define sus propios tipos `RawUserReelResponse`/
+  `RawPostByMediaIdResponse` con solo los campos que efectivamente lee, y
+  castea la respuesta de `insta-fetcher` a esos tipos (`as unknown as
+  Raw...`). Los fixtures de los tests se armaron a mano siguiendo la forma
+  documentada de la API v1 privada de Instagram (confirmada contra el
+  `.d.ts` empaquetado de `insta-fetcher@1.4.0`), ya que
+  `docs/research/ig-tools-bench/REPORT.md` (citado en `requirements.md`)
+  no existe en el repo — ver Open items.
+- `downloadVideo` pide el video con `axios` en modo `arraybuffer` (no
+  streaming) y lo escribe entero con `fs/promises.writeFile`: los reels
+  son clips cortos, y bufferear en memoria simplifica tanto la
+  implementación como el test (sin fakes de stream) sin costo real dado
+  el tamaño esperado del archivo.
+- `createInstagramClient` acepta `hydrateConcurrency` y `retry` en su
+  firma (tal cual el Interface completo de design.md) pero todavía no los
+  usa — arrancan sin comportamiento hasta T8 (retry/backoff +
+  `SessionExpiredError`) y T9 (límite de concurrencia), mismo patrón que
+  T4 dejó los seis `FatalCode` definidos aunque solo produjera tres.
+- `SessionExpiredError` no se define en esta tarea: el Interface de
+  design.md la incluye a nivel de módulo, pero la tarea que la traza y
+  prueba es T8, así que queda para ahí.
+
+**Outcome:** `npm run typecheck` y `npm test` pasan; `src/lib/instagram/client.ts`
+expone `createInstagramClient`, `InstagramClient`, `DiscoveredReel`,
+`HydratedReel`, respaldado por `insta-fetcher@1.4.0` (pineado exacto) y
+`axios` para la descarga de video.
 
 ### T8 — `lib/instagram`: `SessionExpiredError` y retry con backoff
 
