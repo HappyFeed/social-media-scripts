@@ -48,7 +48,7 @@ este plan, así que arranca con el bootstrap del proyecto.
 - [x] **T14** — `mastra/steps`: helper de fallo-como-valor por step
 - [x] **T15** — `mastra/steps`: `hydrate`
 - [x] **T16** — `mastra/steps`: `downloadVideo`
-- [ ] **T17** — `mastra/steps`: `extractAudio`
+- [x] **T17** — `mastra/steps`: `extractAudio`
 - [ ] **T18** — `mastra/steps`: `transcribe`
 - [ ] **T19** — `mastra/steps`: `analyze`
 - [ ] **T20** — `mastra/steps`: `generateScript`
@@ -764,7 +764,7 @@ expone `HydratedReelForDownload`, `downloadVideo`.
 
 ### T17 — `mastra/steps`: `extractAudio`
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Traces to:** 2.3 · design.md Architecture (`extractAudio`)
 - **Depends on:** T10, T14
 
@@ -778,9 +778,20 @@ descargado vía `media.extractAudio`; una falla de ffmpeg deja el reel
 2. **Implement (green):** `src/mastra/steps/extract-audio.ts`.
 3. **Verify:** `npm run typecheck` && `npm test`.
 
-**Decision log:** *(empty until this task is worked on)*
+**Decision log:**
 
-**Outcome:** *(fill in when Done)*
+- `DownloadedReelForAudio extends HydratedReelForDownload { videoPath:
+  string }` importa y extiende el tipo de salida de T16 (`hydrate.ts`
+  hizo lo mismo con `ReelBase` de T2) en vez de redefinir todos los
+  campos desde cero — encadena la forma real de cómo el reel acumula
+  campos step a step.
+- Mismo criterio de paths que T16: `join(os.tmpdir(), \`${mediaId}.mp3\`)`
+  para el destino del audio.
+- El segundo parámetro es `Pick<AudioExtractor, 'extractAudio'>` (mismo
+  patrón de acotar capacidades que T15/T16 con `InstagramClient`).
+
+**Outcome:** `npm run typecheck` y `npm test` pasan; `src/mastra/steps/extract-audio.ts`
+expone `DownloadedReelForAudio`, `extractAudio`.
 
 ### T18 — `mastra/steps`: `transcribe`
 
