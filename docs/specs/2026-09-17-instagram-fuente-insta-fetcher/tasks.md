@@ -43,7 +43,7 @@ este plan, así que arranca con el bootstrap del proyecto.
 - [x] **T9** — `lib/instagram`: límite de concurrencia `hydrateConcurrency`
 - [x] **T10** — `lib/media`: `createFfmpegExtractor`
 - [x] **T11** — `lib/openrouter`: `TranscriptionClient`
-- [ ] **T12** — `lib/openrouter`: `CompletionClient` con schema y retry
+- [x] **T12** — `lib/openrouter`: `CompletionClient` con schema y retry
 - [ ] **T13** — `mastra/index`: instancia de Mastra con storage
 - [ ] **T14** — `mastra/steps`: helper de fallo-como-valor por step
 - [ ] **T15** — `mastra/steps`: `hydrate`
@@ -518,7 +518,7 @@ expone `TranscriptionClient`, `AudioTooLargeError`,
 
 ### T12 — `lib/openrouter`: `CompletionClient` con schema y retry
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Traces to:** 3.2, 3.3, 3.4, 4.3, 4.4 · design.md `lib/openrouter`
 - **Depends on:** T1
 
@@ -532,9 +532,43 @@ inválida, y desiste tras el segundo fallo.
 2. **Implement (green):** `CompletionClient` con retry-once, entradas de modelo de análisis/script en `src/lib/models.ts`.
 3. **Verify:** `npm run typecheck` && `npm test`.
 
-**Decision log:** *(empty until this task is worked on)*
+**Decision log:**
 
-**Outcome:** *(fill in when Done)*
+- Se agregaron `ai` (Vercel AI SDK, `generateObject`) y
+  `@openrouter/ai-sdk-provider` (`createOpenRouter`) como las
+  dependencias reales que resuelven el punto pendiente de Open items
+  ("el proveedor OpenRouter del AI SDK" sin paquete fijado en
+  design.md).
+- Igual que T11 con el `httpClient` inyectable, `createCompletionClient`
+  toma un segundo parámetro opcional `provider: CompletionProvider` (con
+  default real armado sobre `generateObject` + `createOpenRouter`), en
+  vez de mockear los módulos `ai`/`@openrouter/ai-sdk-provider` con
+  `vi.mock`. El TDD plan habla de "un provider fake", reforzando que la
+  inyección explícita es el mecanismo de test esperado acá.
+- División de responsabilidades entre `CompletionProvider.generate` y
+  `CompletionClient.complete`: `generate` le pasa el schema al proveedor
+  real (para aprovechar la generación restringida a schema del AI SDK) y
+  devuelve el resultado *sin* validarlo; `complete` es quien hace
+  `schema.safeParse` y decide si reintenta. Así el retry-once (3.3, 3.4,
+  4.4) es responsabilidad exclusiva de `complete`, independiente de que
+  el proveedor real ya intente cumplir el schema por su cuenta — el test
+  con "provider fake" que devuelve payloads inválidos ejercita
+  exactamente esa capa de validación/retry sin depender del
+  comportamiento interno de `generateObject`.
+- Un segundo fallo de validación rechaza con un `Error` genérico (sin
+  clase dedicada), mismo criterio que T10: nada en requirements.md
+  distingue este fallo por código; los steps `analyze`/`generateScript`
+  (T19/T20) solo necesitan que la promesa rechace para mapearlo a su
+  propio mensaje ("invalid analysis/script response").
+- `ANALYSIS_MODEL`/`SCRIPT_MODEL` en `src/lib/models.ts` se fijaron en
+  `'anthropic/claude-3.5-sonnet'` como placeholders plausibles de
+  OpenRouter (ningún test pega contra la red real); quedan centralizados
+  para poder cambiarlos sin tocar `completion.ts` ni los steps que los
+  consuman.
+
+**Outcome:** `npm run typecheck` y `npm test` pasan; `src/lib/openrouter/completion.ts`
+expone `CompletionClient`, `CompletionProvider`, `createCompletionClient`;
+`src/lib/models.ts` agrega `ANALYSIS_MODEL`, `SCRIPT_MODEL`.
 
 ### T13 — `mastra/index`: instancia de Mastra con storage
 
