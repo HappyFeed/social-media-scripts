@@ -44,7 +44,7 @@ este plan, así que arranca con el bootstrap del proyecto.
 - [x] **T10** — `lib/media`: `createFfmpegExtractor`
 - [x] **T11** — `lib/openrouter`: `TranscriptionClient`
 - [x] **T12** — `lib/openrouter`: `CompletionClient` con schema y retry
-- [ ] **T13** — `mastra/index`: instancia de Mastra con storage
+- [x] **T13** — `mastra/index`: instancia de Mastra con storage
 - [ ] **T14** — `mastra/steps`: helper de fallo-como-valor por step
 - [ ] **T15** — `mastra/steps`: `hydrate`
 - [ ] **T16** — `mastra/steps`: `downloadVideo`
@@ -572,7 +572,7 @@ expone `CompletionClient`, `CompletionProvider`, `createCompletionClient`;
 
 ### T13 — `mastra/index`: instancia de Mastra con storage
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Traces to:** design.md Architecture ("Mastra (src/mastra/) — instancia de Mastra + storage"), habilita 5.3/5.4
 - **Depends on:** T1
 
@@ -591,9 +591,57 @@ proceso Node vive.
 2. **Implement (green):** `src/mastra/index.ts` instanciando Mastra con storage, agregando `@mastra/core` a `package.json`.
 3. **Verify:** `npm run typecheck` && `npm test`.
 
-**Decision log:** *(empty until this task is worked on)*
+**Decision log:**
 
-**Outcome:** *(fill in when Done)*
+- **Bloqueante de entorno descubierto y resuelto en esta tarea:** toda
+  versión `1.x` de `@mastra/core` (incluida la última, `1.67.0`) declara
+  `engines.node: '>=22.13.0'`. La máquina de desarrollo tenía Node
+  `v20.19.0` activo, así que `npm install @mastra/core` sin pin de
+  versión resolvía silenciosamente a `0.24.9` (la última pre-1.0,
+  `engines.node: '>=20'`), cuya API de storage es estructuralmente
+  distinta (sin `MastraCompositeStore`/`InMemoryStore`/`getStore()`) de
+  la que design.md y el resto de este `tasks.md` asumen. Se confirmó con
+  el usuario actualizar Node en vez de programar contra la API vieja: la
+  máquina ya tenía Node `v22.2.0` instalado vía `nvm-windows` pero no
+  activo (`nvm use` requiere una terminal elevada, que la sesión de
+  ejecución no tenía); el usuario lo activó manualmente y a partir de ahí
+  `npm install @mastra/core@1.67.0 --save-exact` instaló limpio. Nota:
+  `v22.2.0` sigue técnicamente por debajo del piso declarado
+  (`>=22.13.0`) — `npm` solo emite un warning `EBADENGINE`, no bloquea —
+  y typecheck/tests corren bien sobre esa versión, pero si algo de
+  `mastra/*` falla de forma rara más adelante, subir el patch de Node a
+  `22.13+` es el primer sospechoso a descartar.
+- `@mastra/core` quedó pineado exacto (`"@mastra/core": "1.67.0"`, sin
+  `^`) en vez de con rango — a diferencia de `insta-fetcher` (pineado
+  exacto porque design.md lo pide explícitamente), acá se pineó por
+  precaución dado lo reciente del soporte de Node 22 y la superficie
+  enorme del paquete: un bump de minor/patch automático es más riesgoso
+  de lo habitual mientras el resto de `mastra/*` (T14-T25) todavía no
+  está escrito.
+- Storage: `InMemoryStore` de `@mastra/core/storage` (sin agregar
+  `@mastra/libsql` ni ningún otro adapter) — es exactamente el "adapter
+  en memoria" que sugiere el Objective de esta tarea, no requiere
+  dependencias adicionales, y el design explícitamente deja fuera de
+  alcance persistir runs entre reinicios del proceso.
+- El test ronda-trip usa `createEmptyWorkflowSnapshot(runId)` (exportado
+  por `@mastra/core/storage`) para construir el snapshot fake en vez de
+  armar un objeto a mano: garantiza una forma válida de
+  `WorkflowRunState` real sin tener que replicar esa forma compleja en
+  el test, y sigue probando exactamente el round-trip pedido
+  (`persistWorkflowSnapshot` → `loadWorkflowSnapshot` devuelve el mismo
+  contenido).
+- El acceso al dominio de storage es vía `mastra.getStorage()` +
+  `storage.getStore('workflows')` (ambos `async`/nullable en la API de
+  1.67.0) en vez de un helper propio (`persistRunSnapshot`/
+  `loadRunSnapshot`) en `mastra/index.ts` — el Objective solo pide que
+  el snapshot "se pueda" persistir/releer por id, y T27/T28 son quienes
+  van a necesitar decidir la forma exacta de esa lectura para el mapeo a
+  `RunView`; no tiene sentido adelantar esa envoltura acá sin saber
+  todavía qué necesitan.
+
+**Outcome:** `npm run typecheck` y `npm test` pasan; `src/mastra/index.ts` expone
+`mastra`, una instancia de `Mastra` (`@mastra/core@1.67.0`, pineado
+exacto) con `InMemoryStore` como storage.
 
 ### T14 — `mastra/steps`: helper de fallo-como-valor por step
 
