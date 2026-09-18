@@ -47,7 +47,7 @@ este plan, así que arranca con el bootstrap del proyecto.
 - [x] **T13** — `mastra/index`: instancia de Mastra con storage
 - [x] **T14** — `mastra/steps`: helper de fallo-como-valor por step
 - [x] **T15** — `mastra/steps`: `hydrate`
-- [ ] **T16** — `mastra/steps`: `downloadVideo`
+- [x] **T16** — `mastra/steps`: `downloadVideo`
 - [ ] **T17** — `mastra/steps`: `extractAudio`
 - [ ] **T18** — `mastra/steps`: `transcribe`
 - [ ] **T19** — `mastra/steps`: `analyze`
@@ -727,7 +727,7 @@ expone `ReelToHydrate`, `hydrate`.
 
 ### T16 — `mastra/steps`: `downloadVideo`
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Traces to:** 2.2 · design.md Architecture (`downloadVideo`)
 - **Depends on:** T7, T14
 
@@ -741,9 +741,26 @@ reel `failed` en `download`.
 2. **Implement (green):** `src/mastra/steps/download-video.ts`.
 3. **Verify:** `npm run typecheck` && `npm test`.
 
-**Decision log:** *(empty until this task is worked on)*
+**Decision log:**
 
-**Outcome:** *(fill in when Done)*
+- design.md no fija una convención de paths para archivos temporales;
+  se decidió `join(os.tmpdir(), \`${mediaId}.mp4\`)` — usa el directorio
+  temporal del SO (no un directorio propio del proyecto) y el `mediaId`
+  como nombre de archivo (único por reel, ya disponible en el reel
+  hidratado). `extractAudio` (T17) va a seguir el mismo criterio para el
+  mp3 resultante, y `cleanup` (T21) borra ambos paths al terminar el
+  reel.
+- `HydratedReelForDownload extends ReelBase { mediaId, caption, videoUrl,
+  durationSeconds }` es el tipo de salida exacto de `hydrate` (T15) más
+  `mediaId` — se define localmente en `download-video.ts` en vez de
+  importarlo de `hydrate.ts`, porque `hydrate.ts` no exporta un tipo para
+  su salida en caso `ok` (solo la firma de la función); redefinirlo acá
+  documenta explícitamente qué campos necesita este step en particular.
+- El segundo parámetro es `Pick<InstagramClient, 'downloadVideo'>`,
+  mismo criterio de acotar capacidades que T15 con `hydrateReel`.
+
+**Outcome:** `npm run typecheck` y `npm test` pasan; `src/mastra/steps/download-video.ts`
+expone `HydratedReelForDownload`, `downloadVideo`.
 
 ### T17 — `mastra/steps`: `extractAudio`
 
