@@ -61,7 +61,7 @@ este plan, así que arranca con el bootstrap del proyecto.
 - [x] **T27** — Mapeo puro snapshot → `RunView`
 - [x] **T28** — `app/api/runs/[runId]`: `GET` estado de un run
 - [x] **T29** — `app/page.tsx`: formulario de arranque de run
-- [ ] **T30** — `app/page.tsx`: vista de resultados de un run
+- [x] **T30** — `app/page.tsx`: vista de resultados de un run
 - [ ] **T31** — `app/page.tsx`: polling de estado de un run
 - [ ] **T32** — `app/page.tsx`: copiar script con un click
 - [ ] **T33** — README: documentar el sessionid de una cuenta quemable
@@ -1535,7 +1535,7 @@ manualmente en el navegador vía `npm run dev`.
 
 ### T30 — `app/page.tsx`: vista de resultados de un run
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Traces to:** 5.3, 5.4, 5.6 · design.md Data models (`RunView`/`ReelView`), Data flow Escenario A/B
 - **Depends on:** T2
 
@@ -1555,9 +1555,29 @@ asíncrono.
 2. **Implement (green):** componente `ResultsView({ run: RunView })` (p.ej. `src/app/results-view.tsx`), usando los tipos de `lib/domain` (T2).
 3. **Verify:** `npm run typecheck` && `npm test`.
 
-**Decision log:** *(empty until this task is worked on)*
+**Decision log:**
 
-**Outcome:** *(fill in when Done)*
+- Componente puro, sin `fetch` ni `useEffect`/timers — recibe el
+  `RunView` completo por props y renderiza según el `status` de cada
+  `ReelView` (`pending`/`ok`/`failed`), tal cual pide el Objective. No
+  hace falta que sea Client Component (`'use client'`): no tiene estado
+  ni efectos, así que puede quedar como Server Component y renderizarse
+  igual desde `RunForm` (Client) más adelante en T31 sin fricción — React
+  permite pasar Server Components como children/props a Client
+  Components.
+- Cada `<li>` lleva `data-reel={reel.shortcode}` — no es parte del
+  Objective en sí, pero permite que el test verifique que el motivo de
+  un reel `failed` no se filtra al de al lado (`queryByText` acotado por
+  `[data-reel="r2"] *`), sin depender de que los textos de los fixtures
+  nunca coincidan por casualidad entre reels.
+- Reutiliza los tipos de `lib/domain` (`ReelView`, `RunView`) tal cual
+  pide la tarea, sin duplicar ninguna forma — el `if (reel.status ===
+  'pending' | 'failed')` con early return aprovecha el discriminated
+  union ya definido en T2 para que TypeScript angoste el tipo dentro de
+  cada rama sin casts.
+
+**Outcome:** `npm run typecheck` y `npm test` pasan; `src/app/results-view.tsx` expone
+`ResultsView`.
 
 ### T31 — `app/page.tsx`: polling de estado de un run
 
