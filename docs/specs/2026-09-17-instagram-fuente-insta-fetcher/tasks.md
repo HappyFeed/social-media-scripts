@@ -57,7 +57,7 @@ este plan, así que arranca con el bootstrap del proyecto.
 - [x] **T23** — `mastra/steps`: `preflight`
 - [x] **T24** — `mastra/steps`: `discover+rank`
 - [x] **T25** — `mastra/workflows`: `generateScriptsWorkflow`
-- [ ] **T26** — `app/api/runs`: `POST` arranca un run
+- [x] **T26** — `app/api/runs`: `POST` arranca un run
 - [ ] **T27** — Mapeo puro snapshot → `RunView`
 - [ ] **T28** — `app/api/runs/[runId]`: `GET` estado de un run
 - [ ] **T29** — `app/page.tsx`: formulario de arranque de run
@@ -1247,7 +1247,7 @@ expone `generateScriptsWorkflow` (un `Workflow` de `@mastra/core`),
 
 ### T26 — `app/api/runs`: `POST` arranca un run
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Traces to:** 5.1 · design.md `app/api/runs` (Interface, Notas) · design.md Data models (`RunInput.scan`)
 - **Depends on:** T25
 
@@ -1266,9 +1266,56 @@ que agregarlo él mismo antes de invocar el workflow — y arranca
 2. **Implement (green):** `src/app/api/runs/route.ts`.
 3. **Verify:** `npm run typecheck` && `npm test`.
 
-**Decision log:** *(empty until this task is worked on)*
+**Decision log:**
 
-**Outcome:** *(fill in when Done)*
+- **DI vía factory, no `vi.mock`:** `route.ts` exporta
+  `createPostHandler(startRun)` (que arma el `POST` real) además del
+  `POST` ya wireado con la implementación real
+  (`startGenerateScriptsRun`). El test importa `createPostHandler`
+  directo y le inyecta un `startRun` fake — evita mockear
+  `@mastra/core/request-context`/`generateScriptsWorkflow` con
+  `vi.mock`, que hubiera sido más frágil dado que `route.ts` construye
+  varios adapters reales (`createInstagramClient`,
+  `createFfmpegExtractor`, etc.) solo para la wiring real, no para el
+  contrato que el test necesita verificar.
+- **"Responde antes de que el trabajo en background termine" se logra
+  con `startRun` devolviendo `{runId}` sin esperar la ejecución real:**
+  la implementación real (`startGenerateScriptsRun`) hace `await
+  generateScriptsWorkflow.createRun()` (rápido, solo arma el `Run` y le
+  asigna `runId`) y después `void run.startAsync({inputData,
+  requestContext})` (fire-and-forget, sin `await`) antes de devolver
+  `{runId: run.runId}` — `startAsync` es el método real de Mastra
+  pensado exactamente para esto ("Returns immediately with the runId...
+  executes in the background"). El test simula ese mismo contrato con
+  un `startRun` fake que resuelve `{runId}` mientras una promesa de
+  "background" queda deliberadamente sin resolver, y verifica que la
+  respuesta ya llegó sin que ese background haya asentado.
+- **`scan` se agrega siempre en `20`** (no configurable desde el body,
+  tal cual nota el Interface de design.md) — `createPostHandler` lo fija
+  como constante (`DEFAULT_SCAN`) al armar el `RunInput` que le pasa a
+  `startRun`.
+- **Validación:** `account`/`actor` deben ser strings no vacíos, `top`
+  debe ser un entero positivo (`Number.isInteger` + `> 0`) — cualquier
+  desvío (falta un campo, `top` no numérico, no entero, o ≤0) responde
+  `400` sin invocar `startRun`. Un body que ni siquiera parsea como JSON
+  también responde `400` (caso no pedido explícitamente por el TDD plan,
+  pero necesario para no reventar con una excepción no controlada en un
+  route handler real).
+- **Wiring real de `buildDeps()`:** construye los adapters reales
+  (`createInstagramClient`, `createFfmpegExtractor`,
+  `createTranscriptionClient`, `createCompletionClient`) desde
+  `process.env.IG_SESSION_ID`/`OPENROUTER_API_KEY`, un `BinaryProbe` real
+  que corre `ffmpeg -version` vía `child_process.spawn` (no existía
+  ninguna implementación real de `BinaryProbe` en el repo — T4 solo
+  definió la interfaz, y todo lo probado hasta acá usó fakes), y
+  `actorsDir: 'content/actors'`. Ninguna de estas piezas de wiring está
+  cubierta por el test de esta tarea (que solo ejercita el contrato de
+  `createPostHandler`) — es la composición final de dependencias,
+  análoga a la que T22/T25 dejaron pendiente de un "punto de wiring real"
+  en sus propios decision logs.
+
+**Outcome:** `npm run typecheck` y `npm test` pasan; `src/app/api/runs/route.ts`
+expone `createPostHandler` y `POST`.
 
 ### T27 — Mapeo puro snapshot → `RunView`
 
