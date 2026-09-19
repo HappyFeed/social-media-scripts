@@ -60,7 +60,7 @@ este plan, así que arranca con el bootstrap del proyecto.
 - [x] **T26** — `app/api/runs`: `POST` arranca un run
 - [x] **T27** — Mapeo puro snapshot → `RunView`
 - [x] **T28** — `app/api/runs/[runId]`: `GET` estado de un run
-- [ ] **T29** — `app/page.tsx`: formulario de arranque de run
+- [x] **T29** — `app/page.tsx`: formulario de arranque de run
 - [ ] **T30** — `app/page.tsx`: vista de resultados de un run
 - [ ] **T31** — `app/page.tsx`: polling de estado de un run
 - [ ] **T32** — `app/page.tsx`: copiar script con un click
@@ -1469,7 +1469,7 @@ expone `createGetHandler` y `GET`.
 
 ### T29 — `app/page.tsx`: formulario de arranque de run
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Traces to:** 5.1, 5.2 · design.md `app/page.tsx`
 - **Depends on:** T5, T26
 
@@ -1484,9 +1484,54 @@ progreso" con el `runId` recibido.
 2. **Implement (green):** `src/app/page.tsx` (parte servidor que lista actores + formulario cliente que llama a T26).
 3. **Verify:** `npm run typecheck` && `npm test`.
 
-**Decision log:** *(empty until this task is worked on)*
+**Decision log:**
 
-**Outcome:** *(fill in when Done)*
+- **Bloqueante de tooling descubierto y resuelto en esta tarea:** era el
+  primer test `.tsx` del repo (T1 ya incluía `.tsx` en el `include` de
+  `vitest.config.ts`, pero nada lo había ejercitado). Dos piezas
+  faltaban:
+  - `jsdom` como entorno de test (`// @vitest-environment jsdom` por
+    archivo, no el entorno global — el resto de la suite es Node puro y
+    no necesita DOM). La versión `latest` de `jsdom` (30.1.0) rompe bajo
+    `vitest@2.1.9` (`html-encoding-sniffer` intenta `require()` un
+    paquete ESM-only, `@exodus/bytes`) — se pineó `jsdom@25.0.1`,
+    compatible con esta versión de vitest.
+  - `@vitejs/plugin-react` para transformar JSX en los tests (sin él,
+    Vite no sabe qué runtime de JSX usar y el componente placeholder de
+    T1 fallaba con "React is not defined"). Se instaló `@vitejs/plugin-
+    react@4.7.0` (el rango compatible con el `vite@5.4.21` que trae
+    `vitest@2.1.9`; la v6 requiere Vite 8) y se agregó a `plugins` en
+    `vitest.config.ts`.
+  - Se agregó `@testing-library/react` (compatible con React 19) para
+    poder testear componentes.
+- **Server Component testeado invocándolo directo:** `Page()` es un
+  `async function` de Next.js App Router; el test hace `render(await
+  Page())` en vez de necesitar un harness de Next — patrón estándar para
+  testear Server Components de App Router con React Testing Library sin
+  levantar un servidor real.
+- **`listActors('content/actors')` se mockea con `vi.mock('../lib/
+  profiles')`** en vez de parametrizar `Page()` con un directorio
+  inyectable: Next.js invoca `export default function Page()` sin
+  argumentos propios, así que no hay forma de pasarle un directorio fake
+  vía props — mockear el módulo es la única vía de inyección posible acá
+  (mismo criterio que T7-T10 mockearon módulos externos).
+- **Split servidor/cliente:** `page.tsx` (Server Component) llama
+  `listActors` y le pasa el resultado a `<RunForm actors={actors} />`
+  (`src/app/run-form.tsx`, `'use client'`) — el formulario necesita
+  estado y `fetch`, que no pueden vivir en un Server Component. Esta
+  tarea deja el formulario mostrando "Run en progreso: {runId}" tras el
+  submit; la vista de resultados real (T30) y el polling (T31) se
+  integran en tareas separadas, como indica el plan.
+- Se creó `content/actors/.gitkeep` para que el directorio exista en un
+  clone nuevo del repo — sin él, `listActors` (que hace `readdir` real)
+  tira `ENOENT` apenas se visita la página en dev antes de que exista
+  ningún actor. Verificado manualmente con `npm run dev`: la página
+  sirve el formulario completo (select de actor vacío, como se espera
+  sin ningún `.md` real todavía).
+
+**Outcome:** `npm run typecheck` y `npm test` pasan; `src/app/page.tsx` lista actores
+y renderiza `<RunForm>`; `src/app/run-form.tsx` expone `RunForm`. Verificado
+manualmente en el navegador vía `npm run dev`.
 
 ### T30 — `app/page.tsx`: vista de resultados de un run
 
