@@ -52,7 +52,7 @@ este plan, así que arranca con el bootstrap del proyecto.
 - [x] **T18** — `mastra/steps`: `transcribe`
 - [x] **T19** — `mastra/steps`: `analyze`
 - [x] **T20** — `mastra/steps`: `generateScript`
-- [ ] **T21** — `mastra/steps`: `cleanup`
+- [x] **T21** — `mastra/steps`: `cleanup`
 - [ ] **T22** — `mastra/workflows`: `processReelWorkflow`
 - [ ] **T23** — `mastra/steps`: `preflight`
 - [ ] **T24** — `mastra/steps`: `discover+rank`
@@ -908,7 +908,7 @@ expone `ReelForScript`, `generateScript`.
 
 ### T21 — `mastra/steps`: `cleanup`
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Traces to:** 2.5 · design.md Architecture (`cleanup`)
 - **Depends on:** T16, T17
 
@@ -930,9 +930,28 @@ reel fallara más adelante. Por eso esta tarea no depende de T14.
 2. **Implement (green):** `src/mastra/steps/cleanup.ts`.
 3. **Verify:** `npm run typecheck` && `npm test`.
 
-**Decision log:** *(empty until this task is worked on)*
+**Decision log:**
 
-**Outcome:** *(fill in when Done)*
+- `cleanup<T extends { videoPath?: string; audioPath?: string }>(input:
+  T, fs): Promise<T>` es genérico sobre cualquier forma de reel que
+  llegue al final del pipeline (`ok` con `script`, o `failed` en
+  cualquiera de los seis steps anteriores) — no importa qué otros campos
+  tenga, solo mira `videoPath`/`audioPath` si están presentes. Devuelve
+  el mismo objeto (`input`) sin copiarlo ni tocar ningún otro campo,
+  cumpliendo literalmente "devuelve el outcome sin modificarlo".
+- `FilesystemForCleanup { unlink(path): Promise<void> }` es la única
+  capacidad que este step necesita del filesystem — se inyecta en vez de
+  importar `node:fs/promises` directo, siguiendo el mismo criterio de
+  capacidades acotadas que T15/T16/T17 (`Pick<...>` sobre sus adapters).
+- Sin sorpresas respecto a lo ya documentado en el Objective de esta
+  tarea (que explica por qué no usa `runPipelineStep`, T14): acá se
+  confirma esa decisión al implementarla — el borrado tiene que correr
+  siempre, tanto en el camino `ok` como `failed`, que es exactamente lo
+  opuesto al passthrough-sin-ejecutar de `runPipelineStep` sobre un input
+  ya `failed`.
+
+**Outcome:** `npm run typecheck` y `npm test` pasan; `src/mastra/steps/cleanup.ts`
+expone `FilesystemForCleanup`, `cleanup`.
 
 ### T22 — `mastra/workflows`: `processReelWorkflow`
 
