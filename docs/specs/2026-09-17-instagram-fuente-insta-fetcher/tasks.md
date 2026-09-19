@@ -59,7 +59,7 @@ este plan, así que arranca con el bootstrap del proyecto.
 - [x] **T25** — `mastra/workflows`: `generateScriptsWorkflow`
 - [x] **T26** — `app/api/runs`: `POST` arranca un run
 - [x] **T27** — Mapeo puro snapshot → `RunView`
-- [ ] **T28** — `app/api/runs/[runId]`: `GET` estado de un run
+- [x] **T28** — `app/api/runs/[runId]`: `GET` estado de un run
 - [ ] **T29** — `app/page.tsx`: formulario de arranque de run
 - [ ] **T30** — `app/page.tsx`: vista de resultados de un run
 - [ ] **T31** — `app/page.tsx`: polling de estado de un run
@@ -1419,7 +1419,7 @@ sub-runs de reel vía `resourceId`.
 
 ### T28 — `app/api/runs/[runId]`: `GET` estado de un run
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Traces to:** 5.7 (y expone 5.3–5.6 vía T27) · design.md `app/api/runs`
 - **Depends on:** T27, T13
 
@@ -1433,9 +1433,39 @@ para un `runId` conocido y responde `200` con el `RunView` mapeado; un
 2. **Implement (green):** `src/app/api/runs/[runId]/route.ts`.
 3. **Verify:** `npm run typecheck` && `npm test`.
 
-**Decision log:** *(empty until this task is worked on)*
+**Decision log:**
 
-**Outcome:** *(fill in when Done)*
+- Mismo patrón de DI-por-factory que T26: `createGetHandler(loadRunView)`
+  es la pieza testeable, `GET` la wiring real
+  (`loadGenerateScriptsRunView`) que usa `mastra.getStorage()` +
+  `toRunView` (T27). El test inyecta un `loadRunView` fake que devuelve
+  un `RunView` o `null`, sin tocar Mastra ni storage real.
+- **Next.js 15 cambió `params` a `Promise<{...}>`** en route handlers de
+  segmento dinámico — `createGetHandler` refleja eso en su firma
+  (`{params: Promise<{runId: string}>}`) y el handler hace `await
+  params` antes de leer `runId`.
+- `loadGenerateScriptsRunView` arma el `RunViewBundle` de T27 con dos
+  lecturas de storage: `loadWorkflowSnapshot({workflowName:
+  'generateScriptsWorkflow', runId})` para el snapshot del run principal
+  (si no existe, `null` → responde 404), y
+  `listWorkflowRuns({workflowName: 'processReelWorkflow', resourceId:
+  runId})` para los sub-runs por reel — el `resourceId` es el mismo
+  `runId` que T26 asignó al crear el run (ver decision log de T27).
+- `WorkflowRun.snapshot` está tipado como `WorkflowRunState | string` en
+  `@mastra/core` (algunos adapters de storage devuelven el snapshot ya
+  serializado como JSON string) — se agregó `parseSnapshot()` para
+  parsear ese caso de forma defensiva antes de pasarlo a `toRunView`,
+  aunque `InMemoryStore` (T13) siempre devuelve el objeto ya parseado.
+- **Verificación manual end-to-end** (no forma parte de la suite
+  automatizada, se hizo con un script descartable vía `tsx` contra un
+  `generateScriptsWorkflow` real con adapters fake): confirmé que
+  `POST` (T26) → `resourceId` compartido → `GET` (este) → `toRunView`
+  (T27) arman un `RunView` correcto de punta a punta contra la instancia
+  real de Mastra, no solo contra los stubs de cada test aislado — dos
+  reels rankeados y con `analysis`/`script`, en el orden esperado.
+
+**Outcome:** `npm run typecheck` y `npm test` pasan; `src/app/api/runs/[runId]/route.ts`
+expone `createGetHandler` y `GET`.
 
 ### T29 — `app/page.tsx`: formulario de arranque de run
 
