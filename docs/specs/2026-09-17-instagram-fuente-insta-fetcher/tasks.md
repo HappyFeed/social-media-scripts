@@ -53,7 +53,7 @@ este plan, así que arranca con el bootstrap del proyecto.
 - [x] **T19** — `mastra/steps`: `analyze`
 - [x] **T20** — `mastra/steps`: `generateScript`
 - [x] **T21** — `mastra/steps`: `cleanup`
-- [ ] **T22** — `mastra/workflows`: `processReelWorkflow`
+- [x] **T22** — `mastra/workflows`: `processReelWorkflow`
 - [ ] **T23** — `mastra/steps`: `preflight`
 - [ ] **T24** — `mastra/steps`: `discover+rank`
 - [ ] **T25** — `mastra/workflows`: `generateScriptsWorkflow`
@@ -955,7 +955,7 @@ expone `FilesystemForCleanup`, `cleanup`.
 
 ### T22 — `mastra/workflows`: `processReelWorkflow`
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Traces to:** 6.1 (integración) · design.md `mastra/workflows` (`processReelWorkflow`)
 - **Depends on:** T13, T15, T16, T17, T18, T19, T20, T21
 
@@ -978,9 +978,86 @@ existir antes.
 2. **Implement (green):** `src/mastra/workflows/process-reel.ts` encadenando T15–T21.
 3. **Verify:** `npm run typecheck` && `npm test`.
 
-**Decision log:** *(empty until this task is worked on)*
+**Decision log:**
 
-**Outcome:** *(fill in when Done)*
+- **Inyección de dependencias:** cada step de T15-T21 es una función
+  plana `(input, adapter, [profile])`, no un `Step` de Mastra — así que
+  hubo que decidir cómo le llegan `InstagramClient`/`AudioExtractor`/
+  `TranscriptionClient`/`CompletionClient`/`ActorProfile` (y el
+  filesystem de `cleanup`) a cada `execute()` de Mastra, que solo recibe
+  `{inputData, requestContext, mastra, ...}` — no parámetros custom. Se
+  usó `requestContext.setRaw/getRaw` (API real de
+  `@mastra/core/request-context`) con una única clave
+  (`PROCESS_REEL_DEPS_KEY`) que guarda un objeto `ProcessReelDeps` con
+  los seis adapters/perfil juntos, en vez de declarar un
+  `requestContextSchema` tipado por Zod para cada uno — es la vía
+  "raw" del propio `RequestContext` (pensada justo para valores
+  runtime-only que no forman parte de un schema validado), y evita tener
+  que modelar en Zod objetos que son instancias de clases/funciones, no
+  datos serializables. Quien arranca el run (T25) es responsable de
+  construir el `RequestContext` con esta clave antes de llamar
+  `run.start()`.
+- **`export const processReelWorkflow`** es un objeto `Workflow` real de
+  `@mastra/core/workflows` (`createWorkflow(...).then(...).commit()`),
+  no una función — coincide con el comentario de design.md ("ReelInput ->
+  ReelOutcome") en el sentido de que ejecutarlo (`.createRun()` +
+  `.start({inputData, requestContext})`) tiene ese efecto, pero el valor
+  exportado en sí es el objeto workflow, para que T25
+  (`generateScriptsWorkflow`) pueda encadenarlo como step de su propio
+  `foreach` — un `Workflow` implementa la interfaz `Step` en
+  `@mastra/core`, así que esto es composición nativa de la librería, no
+  un truco.
+- **Schemas de cada step:** en vez de modelar cada tipo intermedio
+  (`ReelToHydrate`, `HydratedReelForDownload | FailedReel`, etc.) como un
+  `z.object({...})` que replique campo por campo la interfaz TS ya
+  existente, se usó `z.custom<T>()` (sin predicado, acepta cualquier
+  valor en runtime) para cada `inputSchema`/`outputSchema`. Los tipos TS
+  de T15-T21 ya son la fuente de verdad de la forma de estos objetos
+  internos del pipeline — no son inputs externos que necesiten validación
+  de runtime (a diferencia de `reelAnalysisSchema`/`reelScriptSchema`,
+  que sí validan salidas de LLM de verdad, vía `CompletionClient` en T12)
+  — así que `z.custom` documenta el tipo para el chequeo de tipos de
+  Mastra sin el costo/riesgo de mantener 7 schemas Zod duplicados y
+  potencialmente desincronizados de las interfaces reales.
+- **`FailedReel` no declara `videoPath`/`audioPath`** (T14 solo conoce
+  `ReelBase`), pero en runtime un reel que falla en `transcribe` o
+  después sí los trae acumulados — `runPipelineStep` los preserva vía
+  `{...input, status:'failed', ...}`. El step `cleanup` de esta workflow
+  necesita verlos para poder borrar los archivos de un reel que falló
+  tarde en el pipeline. Se resolvió ensanchando el tipo *localmente* en
+  `process-reel.ts` (`FailedReel & {videoPath?: string; audioPath?:
+  string}`) solo en el punto donde se llama a `cleanup()`, sin tocar el
+  `FailedReel` compartido de `pipeline-step.ts` (T14, ya mergeado) — es
+  un cast acotado a este único call site, no una reinterpretación global
+  del tipo.
+- **`status: 'ok'` no lo pone ningún step de T15-T20** — ninguno de esos
+  steps necesitaba ese campo para su propio contrato (`generateScript`
+  solo agrega `script`), pero el `ReelOutcome` final que promete el
+  Objective de esta tarea sí lo requiere para distinguir `ok`/`failed`.
+  Se agregó ese ensamblado final (armar el `ReelOutcome` limpio: `rank`,
+  `shortcode`, `thumbnailUrl`, `metrics`, `status:'ok'`, `analysis`,
+  `script`, descartando los campos internos como `mediaId`/`videoPath`/
+  `transcript`/etc.) dentro del propio step `cleanup` de este workflow
+  (no en el `cleanup()` reusable de T14, que sigue devolviendo su input
+  sin tocarlo tal cual promete su Objective) — es orquestación/glue
+  específica de "cómo se arma la salida pública de este workflow", que
+  encaja en la responsabilidad de `mastra/workflows` ("orquestación y
+  nada más").
+- **`isFailedReel` se exportó** desde `pipeline-step.ts` (T14) — antes
+  era una función privada del módulo; solo se le agregó `export` (sin
+  cambiar su comportamiento) porque el step `cleanup` de este workflow
+  la necesita para decidir si el resultado de `cleanup()` (T21) ya viene
+  `failed` o hay que armarle el `ReelOutcome` `ok`.
+- El test ejercita el workflow real (`processReelWorkflow.createRun()` +
+  `run.start({inputData, requestContext})`) en vez de solo probar las
+  funciones de step directo — así el happy path y las 6 fallas
+  parametrizadas (una por step) corren contra el motor de Mastra de
+  verdad, no una simulación de él, confirmando que el wiring de
+  `requestContext`/`.then()`/`.commit()` funciona.
+
+**Outcome:** `npm run typecheck` y `npm test` pasan; `src/mastra/workflows/process-reel.ts`
+expone `processReelWorkflow` (un `Workflow` de `@mastra/core`),
+`ProcessReelDeps`, `PROCESS_REEL_DEPS_KEY`.
 
 ### T23 — `mastra/steps`: `preflight`
 

@@ -2,7 +2,7 @@ import type { PipelineStep, ReelBase } from '../../lib/domain'
 
 export type FailedReel = ReelBase & { status: 'failed'; failedStep: PipelineStep; reason: string }
 
-function isFailedReel(input: unknown): input is FailedReel {
+export function isFailedReel(input: unknown): input is FailedReel {
   return (
     typeof input === 'object' &&
     input !== null &&
