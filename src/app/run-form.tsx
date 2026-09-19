@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, type FormEvent } from 'react'
+import { RunPolling } from './run-polling'
 
 export function RunForm({ actors }: { actors: string[] }) {
   const [account, setAccount] = useState('')
@@ -20,7 +21,12 @@ export function RunForm({ actors }: { actors: string[] }) {
   }
 
   if (runId) {
-    return <p>Run en progreso: {runId}</p>
+    return (
+      <div>
+        <p>Run en progreso: {runId}</p>
+        <RunPolling runId={runId} />
+      </div>
+    )
   }
 
   return (

@@ -62,7 +62,7 @@ este plan, así que arranca con el bootstrap del proyecto.
 - [x] **T28** — `app/api/runs/[runId]`: `GET` estado de un run
 - [x] **T29** — `app/page.tsx`: formulario de arranque de run
 - [x] **T30** — `app/page.tsx`: vista de resultados de un run
-- [ ] **T31** — `app/page.tsx`: polling de estado de un run
+- [x] **T31** — `app/page.tsx`: polling de estado de un run
 - [ ] **T32** — `app/page.tsx`: copiar script con un click
 - [ ] **T33** — README: documentar el sessionid de una cuenta quemable
 
@@ -1581,7 +1581,7 @@ asíncrono.
 
 ### T31 — `app/page.tsx`: polling de estado de un run
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Traces to:** 5.3 (el mecanismo que mantiene el progreso al día) · design.md `app/page.tsx`, Data flow Escenario A ("La página arranca el polling de `GET /api/runs/:runId` cada ~2 s")
 - **Depends on:** T28, T29, T30
 
@@ -1596,9 +1596,38 @@ actualiza su estado con la respuesta y delega el render a `ResultsView`
 2. **Implement (green):** hook/efecto de polling en `src/app/page.tsx` que arranca tras el submit de T29 y renderiza `ResultsView` (T30) con el `RunView` más reciente.
 3. **Verify:** `npm run typecheck` && `npm test`.
 
-**Decision log:** *(empty until this task is worked on)*
+**Decision log:**
 
-**Outcome:** *(fill in when Done)*
+- El polling se extrajo a su propio Client Component,
+  `src/app/run-polling.tsx` (`RunPolling({runId})`), en vez de vivir
+  inline dentro de `run-form.tsx` — coincide con el path de test que pide
+  la tarea (`run-polling.test.tsx`) y aísla el efecto/timer de la lógica
+  de submit del formulario (T29), que no lo necesita. `RunForm` (T29)
+  ahora renderiza `<RunPolling runId={runId} />` apenas tiene un `runId`.
+- **Sin pedido inmediato al montar:** el polling arranca con
+  `setInterval(poll, 2000)` puro, sin una llamada inicial fuera del
+  timer — "cada avance de ~2s dispara exactamente un pedido más" (texto
+  literal del TDD plan) se cumple más directo así, sin un caso especial
+  de "pedido inicial + luego cada 2s" que el plan no pide explícitamente.
+- **Corte del polling:** el propio callback del `setInterval` compara el
+  `status` de la respuesta más reciente contra `'running'` y llama
+  `clearInterval` apenas deja de serlo — no hace falta guardar el
+  `status` en un state aparte para decidir si seguir pidiendo, alcanza
+  con inspeccionar la respuesta que acaba de llegar.
+- Una bandera `cancelled` capturada por el closure del efecto evita
+  `setState` después de que el componente se desmonte (limpieza
+  estándar de efectos con async en React) — no estaba explícitamente
+  pedido por el TDD plan, pero es necesario para que el efecto sea
+  correcto de verdad, no solo pase el test.
+- El test usa `vi.useFakeTimers()` + `vi.advanceTimersByTimeAsync()`
+  (no `advanceTimersByTime` a secas) porque cada tick del polling hace
+  un `fetch` async real (aunque mockeado) — `...Async` deja que las
+  promesas pendientes de ese tick se asienten antes de devolver el
+  control, así el conteo de llamadas a `fetch` después de cada avance es
+  determinístico.
+
+**Outcome:** `npm run typecheck` y `npm test` pasan; `src/app/run-polling.tsx` expone
+`RunPolling`; `RunForm` (T29) lo renderiza apenas tiene un `runId`.
 
 ### T32 — `app/page.tsx`: copiar script con un click
 
