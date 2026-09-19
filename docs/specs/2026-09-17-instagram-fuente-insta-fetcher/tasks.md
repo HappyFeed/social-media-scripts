@@ -54,7 +54,7 @@ este plan, así que arranca con el bootstrap del proyecto.
 - [x] **T20** — `mastra/steps`: `generateScript`
 - [x] **T21** — `mastra/steps`: `cleanup`
 - [x] **T22** — `mastra/workflows`: `processReelWorkflow`
-- [ ] **T23** — `mastra/steps`: `preflight`
+- [x] **T23** — `mastra/steps`: `preflight`
 - [ ] **T24** — `mastra/steps`: `discover+rank`
 - [ ] **T25** — `mastra/workflows`: `generateScriptsWorkflow`
 - [ ] **T26** — `app/api/runs`: `POST` arranca un run
@@ -1061,7 +1061,7 @@ expone `processReelWorkflow` (un `Workflow` de `@mastra/core`),
 
 ### T23 — `mastra/steps`: `preflight`
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Traces to:** 7.1, 7.2, 4.5 · design.md Architecture (`preflight`)
 - **Depends on:** T4, T5
 
@@ -1076,9 +1076,29 @@ run con el `FatalRunError` correspondiente.
 2. **Implement (green):** `src/mastra/steps/preflight.ts` usando `assertPreconditions` (T4) + `loadActorProfile` (T5).
 3. **Verify:** `npm run typecheck` && `npm test`.
 
-**Decision log:** *(empty until this task is worked on)*
+**Decision log:**
 
-**Outcome:** *(fill in when Done)*
+- `preflight(env, probe, actorsDir, actor)` es una composición directa y
+  sin envoltura extra de `assertPreconditions` (T4) seguido de
+  `loadActorProfile` (T5): ninguna de las dos ya lanza `FatalRunError`
+  por su cuenta, así que este step no necesita capturar ni reinterpretar
+  nada — simplemente deja que el primer `FatalRunError` que se dispare
+  se propague, que es exactamente "abortar el run".
+- No usa `runPipelineStep` (T14) ni el tipo `FailedReel`: a diferencia de
+  T15-T21 (que operan sobre un reel individual y convierten sus fallas en
+  un `ReelOutcome` failed-como-valor), `preflight` corre una sola vez por
+  run, antes de que exista ningún reel, y su fallo es exactamente el otro
+  lado de la regla de "Dos clases de error, una regla" de design.md: un
+  `FatalRunError` que debe *lanzarse* y abortar el run entero, no
+  devolverse como valor.
+- Esta tarea no depende de T13 (la instancia de Mastra): se testea
+  inyectando `env`/`probe`/`actorsDir` directo, igual que el resto de
+  `mastra/steps` (T15-T21) antes de que T22 los conectara al motor real
+  — la integración con `createStep`/`requestContext` de Mastra queda
+  para T25, que sí construye `generateScriptsWorkflow`.
+
+**Outcome:** `npm run typecheck` y `npm test` pasan; `src/mastra/steps/preflight.ts`
+expone `preflight`.
 
 ### T24 — `mastra/steps`: `discover+rank`
 
