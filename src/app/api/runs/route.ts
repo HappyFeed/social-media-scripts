@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { spawn } from 'node:child_process'
 import { RequestContext } from '@mastra/core/request-context'
 import { NextResponse } from 'next/server'
@@ -7,11 +8,8 @@ import { createFfmpegExtractor } from '../../../lib/media'
 import { createCompletionClient } from '../../../lib/openrouter/completion'
 import { createTranscriptionClient } from '../../../lib/openrouter/transcription'
 import type { BinaryProbe } from '../../../lib/preflight'
-import {
-  GENERATE_SCRIPTS_DEPS_KEY,
-  generateScriptsWorkflow,
-  type GenerateScriptsDeps,
-} from '../../../mastra/workflows/generate-scripts'
+import { mastra } from '../../../mastra'
+import { GENERATE_SCRIPTS_DEPS_KEY, type GenerateScriptsDeps } from '../../../mastra/workflows/generate-scripts'
 
 const DEFAULT_SCAN = 20
 
@@ -94,7 +92,14 @@ function buildDeps(): GenerateScriptsDeps {
 }
 
 async function startGenerateScriptsRun(input: RunInput): Promise<CreateRunResult> {
-  const run = await generateScriptsWorkflow.createRun()
+  // El runId se genera acá (no lo asigna Mastra) y se reutiliza como
+  // resourceId: eso hace que cada sub-run de processReelWorkflow que
+  // dispara el foreach de generateScriptsWorkflow quede correlacionado a
+  // este run — es lo que T27/T28 usan para reconstruir el progreso por
+  // reel vía `listWorkflowRuns({ workflowName, resourceId })`.
+  const runId = randomUUID()
+  const workflow = mastra.getWorkflow('generateScriptsWorkflow')
+  const run = await workflow.createRun({ runId, resourceId: runId })
   const requestContext = new RequestContext()
   requestContext.setRaw(GENERATE_SCRIPTS_DEPS_KEY, buildDeps())
   void run.startAsync({ inputData: input, requestContext })
