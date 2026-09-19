@@ -56,7 +56,7 @@ este plan, así que arranca con el bootstrap del proyecto.
 - [x] **T22** — `mastra/workflows`: `processReelWorkflow`
 - [x] **T23** — `mastra/steps`: `preflight`
 - [x] **T24** — `mastra/steps`: `discover+rank`
-- [ ] **T25** — `mastra/workflows`: `generateScriptsWorkflow`
+- [x] **T25** — `mastra/workflows`: `generateScriptsWorkflow`
 - [ ] **T26** — `app/api/runs`: `POST` arranca un run
 - [ ] **T27** — Mapeo puro snapshot → `RunView`
 - [ ] **T28** — `app/api/runs/[runId]`: `GET` estado de un run
@@ -1151,7 +1151,7 @@ expone `discoverAndRank`.
 
 ### T25 — `mastra/workflows`: `generateScriptsWorkflow`
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Traces to:** 5.4, 6.2, 6.3 · design.md Architecture (`generateScriptsWorkflow`)
 - **Depends on:** T13, T22, T23, T24
 
@@ -1176,9 +1176,74 @@ de confiar en que quien ejecute esta tarea la infiera.
 2. **Implement (green):** `src/mastra/workflows/generate-scripts.ts` encadenando T22–T24.
 3. **Verify:** `npm run typecheck` && `npm test`.
 
-**Decision log:** *(empty until this task is worked on)*
+**Decision log:**
 
-**Outcome:** *(fill in when Done)*
+- **Cadena real:** `createWorkflow({id, inputSchema: z.custom<RunInput>(),
+  outputSchema: z.custom<RunResult>()}).then(preflightStep)
+  .then(discoverAndRankStep).then(toReelToHydrateStep)
+  .foreach(processReelWorkflow, {concurrency: 3}).then(assembleStep)
+  .commit()` — mismo criterio de T22 para los schemas (`z.custom<T>()`,
+  sin replicar cada interfaz TS en Zod) y para la inyección de deps
+  (`requestContext.setRaw/getRaw`, no `requestContextSchema`).
+  `.foreach(processReelWorkflow, {concurrency: 3})` usa el `Workflow` de
+  T22 directo como el step a iterar — es composición nativa de Mastra
+  (`Workflow` implementa `Step`), no hizo falta ningún adapter extra.
+- **`toReelToHydrateStep` (nuevo, no es ninguna de T22-T24):** el output
+  de `discoverAndRank` (T24) es `Array<DiscoveredReel & {rank}>`, pero
+  `processReelWorkflow` (T22) espera `ReelToHydrate[]`
+  (`ReelBase & {mediaId}`, con `metrics: {views,likes,comments}` agrupado
+  en vez de sueltos) — son formas distintas a propósito (`DiscoveredReel`
+  es el vocabulario de `lib/instagram`, `ReelBase` el de `lib/domain`).
+  Se agregó este step de mapeo puro entre ambos, como glue de
+  orquestación propia de `mastra/workflows` (no de ninguna task
+  anterior), igual que T22 agregó su propio ensamblado final de
+  `ReelOutcome` dentro del step `cleanup` del workflow.
+- **`assembleStep` usa `getInitData<RunInput>()`** (helper real de la API
+  de ejecución de Mastra) para recuperar `account`/`actor` del
+  `RunInput` original — en ese punto de la cadena el `inputData` que le
+  llega es el array de `ReelOutcome[]` que devolvió el `foreach`, no el
+  input original del run, así que no hay otra forma de reconstruir esos
+  dos campos sin volver a pasarlos "de contrabando" a mano por cada
+  step intermedio.
+- **`FatalRunError` lanzado dentro de `preflightStep`/
+  `discoverAndRankStep` no se atrapa**: se deja propagar tal cual, y el
+  motor de ejecución de Mastra lo convierte en
+  `WorkflowResult.status:'failed'` — así se cumple "un FatalRunError
+  lanzado en cualquier punto aborta el run entero en vez de convertirse
+  en una falla de reel" sin código adicional de por medio.
+- **Hallazgo importante de esta tarea:** `WorkflowResult.error` en un run
+  `failed` **no es la instancia original** del error lanzado —
+  `DefaultExecutionEngine.formatResultError` (dist interno de
+  `@mastra/core`) le corre `.toJSON()` antes de exponerlo, así que
+  `error instanceof FatalRunError` da `false` aunque el step haya
+  lanzado un `FatalRunError` real; sus propiedades propias (`code`,
+  `message`, `name`) sí sobreviven la serialización. El test de esta
+  tarea verifica `result.error` con `toMatchObject({name:
+  'FatalRunError', code: 'account-not-found'})` en vez de
+  `toBeInstanceOf`. **Esto es relevante para T27/T28**, que van a leer
+  `RunView.error` a partir de exactamente este mismo campo serializado —
+  no van a poder usar `instanceof` tampoco.
+- **Test de concurrencia ajustado respecto al TDD plan original:** el
+  texto de la tarea pedía "5 reels fake y `top: 3`", pero con `top: 3`
+  el `foreach` solo procesa 3 reels en total — un concurrency de 3 sobre
+  3 ítems no prueba nada (nunca podría superarlo aunque el límite no
+  existiera). Se usó `top: 5` (los 5 candidatos pasan el ranking) con
+  `concurrency: 3` para que el contador de "en vuelo" realmente tenga
+  que alcanzar 3 simultáneos con reels de sobra esperando cupo — y se
+  agregó `expect(tracker.max).toBe(3)` (no solo `toBeLessThanOrEqual`)
+  para confirmar que el paralelismo de verdad ocurre, no que el motor
+  serializó todo por accidente. La aserción de orden (`RunResult.reels`
+  ordenado por rank) se probó igual, ahora sobre 5 reels en vez de 3.
+  El segundo test (una falla no aborta a los demás) sí usa `top: 3` tal
+  cual el texto original, ya que ahí no hace falta estresar la
+  concurrencia.
+- El actor profile para estos tests se carga de un directorio temporal
+  real (`fs.mkdtemp`), mismo patrón que T5/T23 — `preflight` (T23) hace
+  una lectura de filesystem real, no está mockeado.
+
+**Outcome:** `npm run typecheck` y `npm test` pasan; `src/mastra/workflows/generate-scripts.ts`
+expone `generateScriptsWorkflow` (un `Workflow` de `@mastra/core`),
+`GenerateScriptsDeps`, `GENERATE_SCRIPTS_DEPS_KEY`.
 
 ### T26 — `app/api/runs`: `POST` arranca un run
 
