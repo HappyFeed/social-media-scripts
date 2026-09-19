@@ -58,7 +58,7 @@ este plan, así que arranca con el bootstrap del proyecto.
 - [x] **T24** — `mastra/steps`: `discover+rank`
 - [x] **T25** — `mastra/workflows`: `generateScriptsWorkflow`
 - [x] **T26** — `app/api/runs`: `POST` arranca un run
-- [ ] **T27** — Mapeo puro snapshot → `RunView`
+- [x] **T27** — Mapeo puro snapshot → `RunView`
 - [ ] **T28** — `app/api/runs/[runId]`: `GET` estado de un run
 - [ ] **T29** — `app/page.tsx`: formulario de arranque de run
 - [ ] **T30** — `app/page.tsx`: vista de resultados de un run
@@ -642,6 +642,13 @@ proceso Node vive.
 **Outcome:** `npm run typecheck` y `npm test` pasan; `src/mastra/index.ts` expone
 `mastra`, una instancia de `Mastra` (`@mastra/core@1.67.0`, pineado
 exacto) con `InMemoryStore` como storage.
+
+**Addendum (T27):** esta tarea originalmente instanciaba `Mastra` solo
+con `storage`. T27 amplió esa instancia para registrar
+`workflows: {generateScriptsWorkflow, processReelWorkflow}` —
+imprescindible para que los sub-runs por reel del `foreach` de
+`generateScriptsWorkflow` persistan y sean consultables. Ver el decision
+log de T27 para el detalle completo.
 
 ### T14 — `mastra/steps`: helper de fallo-como-valor por step
 
@@ -1317,9 +1324,18 @@ que agregarlo él mismo antes de invocar el workflow — y arranca
 **Outcome:** `npm run typecheck` y `npm test` pasan; `src/app/api/runs/route.ts`
 expone `createPostHandler` y `POST`.
 
+**Addendum (T27):** `startGenerateScriptsRun` originalmente llamaba
+`generateScriptsWorkflow.createRun()` importado directo (Mastra le
+asignaba el `runId`). T27 lo cambió a
+`mastra.getWorkflow('generateScriptsWorkflow').createRun({runId,
+resourceId: runId})` con un `runId` generado acá (`randomUUID()`),
+usado también como `resourceId` — necesario para poder correlacionar
+después cada sub-run de `processReelWorkflow` con el run que lo generó
+(T28 los necesita para armar el `RunView`). Ver el decision log de T27.
+
 ### T27 — Mapeo puro snapshot → `RunView`
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Traces to:** 5.3, 5.4, 5.6 · design.md `app/api/runs` ("el mapeo snapshot → RunView es una función pura")
 - **Depends on:** T2, T13
 
@@ -1334,9 +1350,72 @@ exponen su `reason`, y `error` está presente si y solo si `status` es
 2. **Implement (green):** `toRunView(snapshot)` en `src/mastra/run-view.ts`.
 3. **Verify:** `npm run typecheck` && `npm test`.
 
-**Decision log:** *(empty until this task is worked on)*
+**Decision log:**
 
-**Outcome:** *(fill in when Done)*
+- **Hallazgo que obligó a amenderrar T13 y T26 (ambas ya mergeadas):**
+  probé empíricamente cómo Mastra persiste el snapshot de un
+  `.foreach(processReelWorkflow)` dentro de `generateScriptsWorkflow`, y
+  el `context` del run principal **no** expone el progreso individual de
+  cada reel — solo el estado agregado del step `foreach` en sí (el
+  `payload`/`status` de la iteración que esté corriendo en ese momento,
+  no una entrada por reel). Sin embargo, si `processReelWorkflow` está
+  *también* registrado en la instancia de `Mastra` (no solo
+  `generateScriptsWorkflow`), cada iteración del `foreach` persiste su
+  **propio run independiente** de `processReelWorkflow`, recuperable vía
+  `storage.getStore('workflows').listWorkflowRuns({workflowName:
+  'processReelWorkflow', resourceId})` — y ese `resourceId` se propaga
+  automáticamente del run padre a cada sub-run cuando se lo pasa a
+  `createRun({runId, resourceId})`. Esto obligó dos cambios en tareas ya
+  mergeadas, hechos en esta misma tarea porque T27 no se puede
+  implementar/probar de forma útil sin ellos:
+  - `src/mastra/index.ts` (T13): ahora registra
+    `workflows: {generateScriptsWorkflow, processReelWorkflow}` en la
+    instancia de `Mastra`, no solo el storage.
+  - `src/app/api/runs/route.ts` (T26): `startGenerateScriptsRun` genera
+    el `runId` con `randomUUID()` (en vez de dejar que Mastra lo asigne)
+    y lo pasa como `resourceId` a `createRun({runId, resourceId: runId})`
+    sobre `mastra.getWorkflow('generateScriptsWorkflow')` (en vez del
+    `generateScriptsWorkflow` importado directo) — así cada sub-run de
+    reel que dispare el `foreach` de ese run específico queda
+    correlacionado a su `runId`.
+- **`toRunView` recibe un `RunViewBundle` (`{runId, outer, reelRuns}`),
+  no un único "snapshot"** como sugiere literalmente el nombre de la
+  tarea — es la consecuencia directa del hallazgo anterior: hacen falta
+  dos fuentes (el snapshot del run principal + la lista de sub-runs por
+  reel) para reconstruir un `RunView` completo. Sigue siendo una función
+  pura (no hace I/O — quien arme el bundle con las dos consultas de
+  storage es T28).
+- **Reels `ok`/`failed` se leen directo de `reelRun.result`:** ningún
+  step de `processReelWorkflow` (T15-T21) lanza una excepción real para
+  una falla de reel — las fallas son valores (`runPipelineStep`, T14),
+  así que a nivel de Mastra el sub-run **siempre** termina con
+  `status: 'success'`, y `reelRun.result` ya es exactamente el
+  `ReelOutcome` que armó el step `cleanup` de T22 (`ok` con
+  `analysis`/`script`, o `failed` con `failedStep`/`reason`) — no hace
+  falta ninguna transformación extra para esos dos casos.
+- **`currentStep` de un reel pendiente** se deriva recorriendo
+  `PIPELINE_STEPS` en orden (`hydrate, download, extract-audio,
+  transcribe, analyze, generate-script` — los mismos ids literales que
+  usa `process-reel.ts`) y devolviendo el primero cuyo `context[step]`
+  no existe todavía o no está en `status: 'success'` — el snapshot de
+  Mastra solo tiene una entrada en `context` para los steps que ya
+  arrancaron (confirmado empíricamente), así que "no existe todavía" y
+  "existe pero no es success" cubren entre los dos toda la casuística de
+  "está corriendo ahí".
+- **`RunSnapshotLike`** es un tipo local mínimo (no el `WorkflowRunState`
+  completo de `@mastra/core`) con solo los campos que `toRunView`
+  necesita (`status`, `context`, `result?`, `error?`) — evita atar esta
+  función pura y sus tests al tipo completo (enorme) de Mastra, y hace
+  los fixtures del test triviales de armar a mano.
+- **El campo `error` reusa el hallazgo de T25:** `RunSnapshotLike.error`
+  se tipa como `{code: FatalCode; message: string}` (la forma
+  serializada real, no `instanceof FatalRunError`) — coherente con lo
+  documentado en el decision log de T25.
+
+**Outcome:** `npm run typecheck` y `npm test` pasan; `src/mastra/run-view.ts` expone
+`toRunView`, `RunSnapshotLike`, `RunViewBundle`; `src/mastra/index.ts`
+registra ambos workflows; `src/app/api/runs/route.ts` correlaciona
+sub-runs de reel vía `resourceId`.
 
 ### T28 — `app/api/runs/[runId]`: `GET` estado de un run
 
