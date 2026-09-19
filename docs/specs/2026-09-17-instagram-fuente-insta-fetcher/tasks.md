@@ -55,7 +55,7 @@ este plan, así que arranca con el bootstrap del proyecto.
 - [x] **T21** — `mastra/steps`: `cleanup`
 - [x] **T22** — `mastra/workflows`: `processReelWorkflow`
 - [x] **T23** — `mastra/steps`: `preflight`
-- [ ] **T24** — `mastra/steps`: `discover+rank`
+- [x] **T24** — `mastra/steps`: `discover+rank`
 - [ ] **T25** — `mastra/workflows`: `generateScriptsWorkflow`
 - [ ] **T26** — `app/api/runs`: `POST` arranca un run
 - [ ] **T27** — Mapeo puro snapshot → `RunView`
@@ -1102,7 +1102,7 @@ expone `preflight`.
 
 ### T24 — `mastra/steps`: `discover+rank`
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Traces to:** 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 7.3 (nivel de workflow) · design.md Architecture (`discover`, `rank`)
 - **Depends on:** T3, T4, T7, T8
 
@@ -1125,9 +1125,29 @@ pasar por el contenedor de DI de la instancia — T13 solo hace falta para que
 2. **Implement (green):** `src/mastra/steps/discover-rank.ts` usando `lib/instagram` (T7, T8) + `rankReels` (T3) + `FatalRunError` de `lib/preflight` (T4).
 3. **Verify:** `npm run typecheck` && `npm test`.
 
-**Decision log:** *(empty until this task is worked on)*
+**Decision log:**
 
-**Outcome:** *(fill in when Done)*
+- El Objective agrupa "cuenta inexistente/inalcanzable/sin reels" bajo un
+  mismo `FatalRunError('account-not-found')`, así que `discoverAndRank`
+  trata **cualquier** rechazo de `discoverReels` que no sea
+  `SessionExpiredError` (no solo un caso específico de "cuenta no
+  encontrada") como `account-not-found` — junto con el caso de que la
+  llamada resuelva pero devuelva un array vacío. Es una decisión
+  deliberadamente amplia: `lib/instagram` (T7/T8) no distingue a nivel de
+  tipo entre "cuenta no existe", "cuenta inalcanzable" y otros fallos de
+  red no cubiertos por el retry de T8, así que cualquier error que llegue
+  hasta acá después de agotar esos reintentos se interpreta como
+  problema de la cuenta pedida.
+- Igual que `preflight` (T23), no usa `runPipelineStep`/`FailedReel`: corre
+  una sola vez a nivel de run (antes de que exista ningún reel individual)
+  y su fallo debe abortar el run entero (`FatalRunError` lanzado), no
+  convertirse en una falla de reel.
+- No depende de T13: se testea con un `InstagramClient` fake inyectado
+  directo, mismo patrón que el resto de `mastra/steps` antes de que T22
+  (y acá, más adelante T25) los conecte al motor real de Mastra.
+
+**Outcome:** `npm run typecheck` y `npm test` pasan; `src/mastra/steps/discover-rank.ts`
+expone `discoverAndRank`.
 
 ### T25 — `mastra/workflows`: `generateScriptsWorkflow`
 
